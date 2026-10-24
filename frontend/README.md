@@ -11,6 +11,14 @@ for the upgrade sequence, fingerprints, legacy-history handling and limitations.
 
 ### Dashboard views
 
+**Temporary local-development control:** Settings → Server URL lets each computer
+check and reconnect to a new tunnel origin without editing `state.json` or restarting
+the companion. Explicitly approve sending your existing credential to that URL.
+It must expose the same backend database, network, member, device and signing key.
+Failed checks leave the old URL intact; active workers must finish first.
+Update Mac and Windows separately. This control will be removed after local testing,
+not retained as a disabled production feature.
+
 The dashboard opens on **Home**, showing requests needing your attention,
 in-progress work, queued requests (oldest first), and work waiting on others.
 Open an item to use its existing approval/review controls in **Chats**.

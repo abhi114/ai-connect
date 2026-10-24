@@ -31,3 +31,11 @@
 
 Do not replace credentials or recreate memberships as an update strategy. Keep
 CLI commands as a recovery path even after installers and dashboard onboarding.
+
+## Remove after local development: temporary server switching
+
+Remove `src/server-switch.ts`, `test/server-switch.test.ts`, the `change_server`
+handler/coordination in `src/core.ts`, and the `server-switch-*`, `server-new`,
+`server-consent`, `server-save`, `server-current` Settings controls/handlers in
+`src/onboarding.ts`. Remove the temporary README section too. This is a development
+convenience for changing tunnel URLs, not a permanent disabled production feature.

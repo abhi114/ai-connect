@@ -10,8 +10,10 @@ import { pickFolder } from './folder-picker.ts';
 import { CodexIntegration } from './integration.ts';
 import { verifyRequest, verification, verifyMessage, requireVerified, trustView, changeTrust } from './trust.ts';
 import { resultPayload } from '../../shared/signing.ts';
+import { serverOrigin, checkServer } from './server-switch.ts';
 
 export class Core {
+  changingServer=false; private activeDispatches=0;
   folderPicker=pickFolder;
   integration:CodexIntegration; enrolling=false;
   modelCatalog?:ModelCatalog; modelDiscovery?:Promise<ModelCatalog>; modelLoader=discoverModels;
@@ -23,7 +25,7 @@ export class Core {
   store:Store; remote:Remote; worker:Worker; syncing=false; connected=false; stopping=false;
   constructor(store:Store) { this.store=store; this.remote=new Remote(store); this.worker=new Worker(store,this.remote);this.integration=new CodexIntegration(store.dir); }
   async sync() {
-    if(this.stopping || this.syncing || !this.store.state.token) return;
+    if(this.stopping || this.changingServer || this.syncing || !this.store.state.token) return;
     this.syncing=true;
     try {
       await this.remote.refreshTrust();
@@ -44,6 +46,32 @@ export class Core {
     finally { this.syncing=false; }
   }
   async dispatch(method:string,args:any={}) {
+    if(method==='change_server')return this.changeServer(args);
+    if(this.changingServer)throw Error('Server URL is being updated. Try again shortly.');
+    this.activeDispatches++;
+    try{return await this.dispatchInner(method,args)}finally{this.activeDispatches--;}
+  }
+  private async changeServer(args:any){
+    const server=serverOrigin(args.server);
+    if(args.confirmed!==true)throw Error('Confirm sending your existing device credential to the new server');
+    if(!this.store.state.token)throw Error('Join a network first');
+    if(this.changingServer)throw Error('A server update is already in progress');
+    this.changingServer=true;
+    try{
+      const deadline=Date.now()+20000;
+      while(this.syncing||this.activeDispatches){if(Date.now()>deadline)throw Error('Companion is busy; try again when idle');await new Promise(r=>setTimeout(r,50));}
+      if(this.stopping)throw Error('Companion is stopping');
+      if(this.worker.active.size)throw Error('Wait until active workers finish before changing the server URL');
+      await checkServer(server,this.store.state);
+      const old=this.store.state.server;
+      this.store.state.server=server;
+      try{this.store.save()}catch(e){this.store.state.server=old;throw e;}
+      this.remote=new Remote(this.store);this.worker.remote=this.remote;this.connected=false;
+    }finally{this.changingServer=false;}
+    await this.sync();
+    return {server:this.store.state.server,connected:this.connected,error:this.store.state.connection_error};
+  }
+  private async dispatchInner(method:string,args:any={}) {
     const state=this.store.state;
     switch(method) {
       case 'trust_status': {
