@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { dataDir } from './store.ts';
 import { localCall } from './ipc.ts';
 import { startDaemon } from './daemon.ts';
-import { ensureService } from './service.ts';
+import { ensureService, stopService } from './service.ts';
 import { setup, checkMcp } from './setup.ts';
 import { banner, connectionLabel } from './brand.ts';
 
@@ -45,13 +45,13 @@ export async function main(argv=process.argv.slice(2)) {
       const daemon=await startDaemon();console.error(`AIConnect companion ready. Dashboard: ${daemon.url}\nRelay status appears in the dashboard.`);
       for(const signal of ['SIGINT','SIGTERM'] as const)process.on(signal,()=>void daemon.stop());return;
     }
-    if(action==='stop'){console.log(await localCall('shutdown'));return}
+    if(action==='stop'){console.log(await stopService());return}
     if(action==='start'){
       console.log(await ensureService());return;
     }
     throw new Error('service supports run, start, stop');
   }
-  if(verb==='dashboard'){console.log(JSON.parse(readFileSync(join(dataDir(),'dashboard.json'),'utf8')).url);return}
+  if(verb==='dashboard'){await ensureService();console.log(JSON.parse(readFileSync(join(dataDir(),'dashboard.json'),'utf8')).url);return}
   let method=verb,args:any={};
   if(verb==='create'||verb==='join'){method='enroll';args={name:verb==='create'?action:undefined,code:verb==='join'?action:undefined,handle:o.handle,server:o.server};}
   else if(verb==='status')method='network_status';

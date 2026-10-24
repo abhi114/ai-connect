@@ -6,6 +6,66 @@ The companion is the single local process for the CLI, Codex stdio MCP shim, and
 
 ## Start and join
 
+### Dashboard views
+
+The dashboard opens on **Home**, showing requests needing your attention,
+in-progress work, queued requests (oldest first), and work waiting on others.
+Open an item to use its existing approval/review controls in **Chats**.
+Chats retains network messages, project/person history, filters and the composer.
+Use the navigation toggle to hide the left sidebar, and **Show/Hide details** to
+control the right inspector. Details start collapsed and open when selecting a
+request. Switching Home/Chats preserves the current draft and conversation view.
+
+### Dashboard onboarding (recommended after installing prerequisites)
+
+Run `npm run cli -- dashboard` (`npm.cmd` in Windows PowerShell). This starts
+the local companion if necessary and prints its authenticated localhost URL.
+Open that URL, then choose **Network & setup**:
+
+- Admins can create a single-use invite and copy its server URL, code and expiry.
+  Share it privately. Ordinary members cannot generate invites.
+- New users enter that server URL, invite code and their username to join.
+  Existing members cannot accidentally re-enroll or overwrite their profile.
+  A transport-interrupted join retains its idempotency key locally: retry with
+  the same inputs to recover it, including after restarting the companion.
+- **Check integration** shows this installation, the current `aiconnect` MCP
+  entry and the local profile. Review them, check the consent box, then select
+  **Connect / repair AIConnect**. This updates only that MCP entry using the
+  Codex CLI; it never removes the entry first. Another profile/tool or a disabled
+  entry is not automatically overwritten. Reopen Codex or restart its MCP server
+  afterward. Codex login is still a separate `codex login` action.
+
+If the code moved, launch the dashboard from the **new checkout** after stopping
+the old companion. It cannot repair a path to a newer checkout it is not running.
+The CLI alternative is `npm run cli -- setup --repair` (same-profile AIConnect
+entry only). Neither repair method changes network membership or local history.
+The standard CLI setup, create, join and invite commands remain supported.
+
+The browser cannot install/start native software on its own: Node 24+, Git and
+Codex CLI still need to be installed. The dashboard stays localhost-only; never
+share its token URL or tunnel it. See [IMPROVEMENTS.md](IMPROVEMENTS.md).
+
+### Startup/shutdown troubleshooting
+
+Startup now waits up to 45 seconds with bounded probes rather than six seconds.
+It waits for a profile owner already starting/stopping instead of spawning over
+it. `service stop` waits for shutdown, including running workers and sync, before
+returning. Only a fully listening companion reports readiness, and a duplicate
+daemon no longer rewrites the profile before acquiring its lock.
+
+If Windows still fails on the first attempt, inspect locally:
+
+```powershell
+Get-Content "$env:USERPROFILE\.repo-network\daemon.log" -Tail 80
+```
+
+Use your custom RN_HOME path if set. Logs may contain private information; redact
+tokens and paths before sharing. Check for address-in-use, missing executables,
+permission errors, or slow/security-software-blocked startup. Do not delete the
+profile or daemon lock while its process is alive. These changes were tested on
+macOS with simulated slow Windows startup; Windows-native verification remains
+necessary to confirm the original reported symptom.
+
 ### Per-repository request queue
 
 Within one companion, different repositories can run workers concurrently, but

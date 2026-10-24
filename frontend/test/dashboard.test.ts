@@ -1,6 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { html, css, js } from '../src/dashboard.ts';
+import { onboardingCss } from '../src/onboarding.ts';
+
+test('warm light theme has readable text and consistent dialog colors',()=>{
+  assert.match(css,/color-scheme:light/);
+  assert.doesNotMatch(css+onboardingCss,/#0d1423|#19253b|#ae93ff|color-scheme:dark/);
+  const luminance=(hex:string)=>{
+    const channels=hex.match(/[a-f0-9]{2}/gi)!.map(c=>parseInt(c,16)/255).map(c=>c<=0.04045?c/12.92:((c+0.055)/1.055)**2.4);
+    return channels[0]*0.2126+channels[1]*0.7152+channels[2]*0.0722;
+  };
+  for(const [foreground,background] of [['30342d','f7f5ef'],['5e6656','eeede5'],['ffffff','536947'],['65705b','edf2e6'],['943c36','fae9e4'],['626a5a','fffdf7']]){
+    const values=[luminance(foreground),luminance(background)].sort((a,b)=>b-a);
+    assert.ok((values[0]+0.05)/(values[1]+0.05)>=4.5,`${foreground} on ${background} must meet normal-text AA contrast`);
+  }
+});
 
 test('dashboard bundle parses and all static ID selectors have matching elements', () => {
   assert.doesNotThrow(() => new Function(js));
@@ -20,4 +34,17 @@ test('dashboard keeps user-generated content inert and sharing opt-in', () => {
   assert.match(js, /rpc\('expose'/);
   assert.match(js, /Only request participants|Visible to request participants/);
   assert.match(css, /focus-visible/);
+});
+
+test('Home is the landing tab and panels release chat space when collapsed',()=>{
+  assert.match(html,/role="tablist" aria-label="Workspace views"/);
+  assert.match(html,/id="tab-home" role="tab" aria-selected="true"/);
+  assert.match(js,/let mainTab='home',inspectorOpen=false/);
+  assert.match(js,/setInspector\(false\);setMainTab\('home'\)/);
+  assert.match(css,/sidebar-collapsed>main\{grid-column:2\}/);
+  assert.match(css,/#chat-content\{[^}]*grid-template-columns:minmax\(0,1fr\)/);
+  assert.match(css,/#chat-content>\.inspector\{display:none\}/);
+  assert.match(js,/Needs your attention/);
+  assert.match(js,/Queued · oldest first/);
+  assert.match(js,/ArrowLeft.*ArrowRight/);
 });

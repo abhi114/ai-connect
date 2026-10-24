@@ -7,6 +7,7 @@ import { startDaemon } from '../../src/daemon.ts';
 import { Core } from '../../src/core.ts';
 import { Store } from '../../src/store.ts';
 import { git } from '../../src/git.ts';
+import { CodexIntegration, mcpPath } from '../../src/integration.ts';
 
 const dir=await mkdtemp(join(tmpdir(),'aiconnect-dashboard-qa-'));
 const repo=join(dir,'demo-shop');await mkdir(repo);
@@ -15,6 +16,15 @@ await git(repo,'init');await git(repo,'add','README.md');await git(repo,'-c','us
 const relay=createApp({rateLimit:10000});await new Promise<void>(resolve=>relay.server.listen(0,'127.0.0.1',resolve));
 const server=`http://127.0.0.1:${(relay.server.address() as any).port}`;
 const daemon=await startDaemon(join(dir,'owner'),0);const alice=daemon.core;
+const guest=await startDaemon(join(dir,'guest'),0);guest.core.store.state.server=server;guest.core.store.save();
+for(const core of [alice,guest.core]){
+  let entry:any;
+  core.integration=new CodexIntegration(core.store.dir,async(_binary,args)=>{
+    if(args[1]==='list')return JSON.stringify(entry?[entry]:[]);
+    if(args[1]!=='add')throw Error('Unexpected fixture command');
+    entry={name:'aiconnect',enabled:true,transport:{command:process.execPath,args:[mcpPath],env:{RN_HOME:core.store.dir,RN_PORT:process.env.RN_PORT||'4319'}}};return 'Fixture registration only';
+  });
+}
 const bob=new Core(new Store(join(dir,'bob'))),carol=new Core(new Store(join(dir,'carol')));
 alice.worker.runner=async(request,worktree)=>{
   if(request.kind==='change')await writeFile(join(worktree,'README.md'),'# Demo shop\nAdded SAVE10 for this isolated QA fixture.\n');
@@ -36,5 +46,5 @@ await bob.dispatch('request_change',{repo_id:published.id,body:'Add a SAVE10 dis
 await carol.dispatch('ask_repo',{repo_id:published.id,body:'Which input validation rules keep invalid quantities out of the cart?'});
 await alice.sync();
 const timer=setInterval(()=>{void bob.sync();void carol.sync()},10000);
-console.log(JSON.stringify({preview_url:daemon.url,fixture_directory:dir}));
-for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{clearInterval(timer);bob.worker.stop();carol.worker.stop();void daemon.stop().then(()=>relay.close()).then(()=>process.exit(0));});
+console.log(JSON.stringify({preview_url:daemon.url,guest_url:guest.url,fixture_directory:dir}));
+for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{clearInterval(timer);bob.worker.stop();carol.worker.stop();void Promise.all([daemon.stop(),guest.stop()]).then(()=>relay.close()).then(()=>process.exit(0));});

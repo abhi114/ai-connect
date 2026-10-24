@@ -1,17 +1,11 @@
-import { fileURLToPath } from 'node:url';
 import { resolve } from 'node:path';
 import { command } from './process.ts';
 import { dataDir } from './store.ts';
 import { ensureService } from './service.ts';
 import { localCall } from './ipc.ts';
 
-export const mcpPath=fileURLToPath(new URL('./mcp.ts',import.meta.url));
-export function registrationArgs(name='aiconnect') {
-  if(!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error('Server name must use letters, numbers, underscores or hyphens');
-  return ['mcp','add',name,'--env',`RN_HOME=${dataDir()}`,'--env',`RN_PORT=${process.env.RN_PORT||4319}`,
-    '--env',`PATH=${process.env.PATH||''}`,...(process.env.RN_CODEX_BIN?['--env',`RN_CODEX_BIN=${process.env.RN_CODEX_BIN}`]:[]),
-    '--',process.execPath,mcpPath];
-}
+import { mcpPath, registrationArgs, CodexIntegration } from './integration.ts';
+export { mcpPath, registrationArgs } from './integration.ts';
 export async function setup(options:Record<string,any>) {
   if(Number(process.versions.node.split('.')[0])<24) throw new Error('Node 24 or newer is required');
   const binary=process.env.RN_CODEX_BIN||'codex';
@@ -31,7 +25,10 @@ export async function setup(options:Record<string,any>) {
     const same=entry.transport?.command===process.execPath &&
       JSON.stringify(entry.transport?.args)===JSON.stringify([mcpPath]) &&
       entry.transport?.env?.RN_HOME===dataDir() && entry.transport?.env?.RN_PORT===(process.env.RN_PORT||'4319');
-    if(!same) throw new Error(`MCP server ${name} already has different settings. Choose --name with an unused name.`);
+    if(!same) {
+      if(options.repair===true&&name==='aiconnect') {const integration=new CodexIntegration();const current=await integration.status();await integration.register({confirmed:true,fingerprint:current.fingerprint});}
+      else throw new Error(`MCP server ${name} has different settings. Open the dashboard > Network & setup to review and repair it, or use setup --repair for the same AIConnect profile.`);
+    }
     if(entry.enabled===false) throw new Error(`MCP server ${name} is disabled. Enable it in Codex settings.`);
   } else await command(binary,args,process.cwd());
   const check=await checkMcp();
@@ -44,7 +41,7 @@ export async function checkMcp() {
     {jsonrpc:'2.0',id:2,method:'tools/list'},
     {jsonrpc:'2.0',id:3,method:'tools/call',params:{name:'network_status',arguments:{}}}
   ];
-  const output=await command(process.execPath,[mcpPath],process.cwd(),{input:messages.map(m=>JSON.stringify(m)).join('\n')+'\n',timeout:15000});
+  const output=await command(process.execPath,[mcpPath],process.cwd(),{input:messages.map(m=>JSON.stringify(m)).join('\n')+'\n',timeout:60000});
   const replies=output.split('\n').map(line=>JSON.parse(line));
   const init=replies.find(r=>r.id===1), list=replies.find(r=>r.id===2), status=replies.find(r=>r.id===3);
   if(!init?.result?.serverInfo || !list?.result?.tools?.length || !status?.result || status.result.isError) throw new Error('MCP transport check failed: '+JSON.stringify(status||replies));

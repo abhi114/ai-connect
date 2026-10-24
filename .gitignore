@@ -33,6 +33,7 @@ secrets/
 state.json
 state.json.tmp
 dashboard.json
+daemon.lock
 profiles/
 worktrees/
 *.sock

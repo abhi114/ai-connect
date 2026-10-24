@@ -17,6 +17,7 @@ export interface Run {
   error?: string; result?: unknown; delivery_key?: string;
 }
 export interface State {
+  pending_enrollment?: {server:string;body:any};
   execution_options?: Record<string, ExecutionOptions>;
   server: string; token?: string; member?: any; device?: any; network?: any;
   session_token: string; cursor: number; bindings: Record<string, Binding>;

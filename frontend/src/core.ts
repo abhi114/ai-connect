@@ -1,25 +1,27 @@
 import { randomUUID } from 'node:crypto';
 import { Store } from './store.ts';
-import { Remote } from './remote.ts';
+import { Remote, RemoteError } from './remote.ts';
 import { Worker } from './worker.ts';
 import { identify, git } from './git.ts';
 import { approvalDigest } from './policy.ts';
 import { command } from './process.ts';
 import { discoverModels, validateExecution, type ModelCatalog } from './models.ts';
 import { pickFolder } from './folder-picker.ts';
+import { CodexIntegration } from './integration.ts';
 
 export class Core {
   folderPicker=pickFolder;
+  integration:CodexIntegration; enrolling=false;
   modelCatalog?:ModelCatalog; modelDiscovery?:Promise<ModelCatalog>; modelLoader=discoverModels;
   async models(refresh=false) {
     if(!refresh&&this.modelCatalog&&Date.now()-this.modelCatalog.fetched_at<60_000)return this.modelCatalog;
     if(!this.modelDiscovery)this.modelDiscovery=this.modelLoader(this.store.dir).then(c=>this.modelCatalog=c).finally(()=>{this.modelDiscovery=undefined});
     return this.modelDiscovery;
   }
-  store:Store; remote:Remote; worker:Worker; syncing=false; connected=false;
-  constructor(store:Store) { this.store=store; this.remote=new Remote(store); this.worker=new Worker(store,this.remote); }
+  store:Store; remote:Remote; worker:Worker; syncing=false; connected=false; stopping=false;
+  constructor(store:Store) { this.store=store; this.remote=new Remote(store); this.worker=new Worker(store,this.remote);this.integration=new CodexIntegration(store.dir); }
   async sync() {
-    if(this.syncing || !this.store.state.token) return;
+    if(this.stopping || this.syncing || !this.store.state.token) return;
     this.syncing=true;
     try {
       await this.remote.flush();
@@ -31,13 +33,15 @@ export class Core {
       Object.assign(this.store.state,{member:identity.member,network:identity.network,members:members.members,repos:repos.repos,requests:requests.requests});
       this.store.state.cursor=events.cursor ?? events.events?.at(-1)?.id ?? this.store.state.cursor;
       delete this.store.state.connection_error; this.connected=true; this.store.save();
-      await this.worker.tick();
+      if(!this.stopping)await this.worker.tick();
     } catch(error) { this.connected=false; this.worker.stop(); this.store.state.connection_error=error instanceof Error?error.message:String(error); this.store.save(); }
     finally { this.syncing=false; }
   }
   async dispatch(method:string,args:any={}) {
     const state=this.store.state;
     switch(method) {
+      case 'integration_status': return this.integration.status();
+      case 'integration_register': return this.integration.register(args);
       case 'pick_folder': return this.folderPicker();
       case 'list_messages': {
         const limit=args.limit??50;
@@ -56,12 +60,27 @@ export class Core {
       case 'snapshot': return {server:state.server,network:state.network,member:state.member,members:state.members,repos:state.repos,requests:state.requests,bindings:state.bindings,runs:state.runs,connected:this.connected,error:state.connection_error,pending:state.outbox.length};
       case 'enroll': {
         if(state.token) throw new Error('This profile is already enrolled. Use a separate RN_HOME for another member.');
-        if(args.server) state.server=String(args.server);
-        const identity=await this.remote.mutate(args.code?'/v1/join':'/v1/networks',{code:args.code,name:args.name,handle:args.handle,device_label:args.device_label||'Local companion',idempotency_key:args.idempotency_key||randomUUID()});
-        Object.assign(state,identity); this.store.save(); await this.sync();
-        return {network:state.network,member:state.member,credential_storage:'Restricted-permission local file; OS keychain integration is deferred.'};
+        if(this.enrolling)throw new Error('Joining is already in progress');
+        this.enrolling=true;
+        try {
+          const server=new URL(String(args.server||state.server));
+          if(server.username||server.password||server.search||server.hash||server.pathname!=='/'||!(server.protocol==='https:'||(server.protocol==='http:'&&['localhost','127.0.0.1','[::1]'].includes(server.hostname))))throw new Error('Use an HTTPS server origin (HTTP only for localhost), without credentials, path or query.');
+          const body={code:args.code,name:args.name,handle:args.handle,device_label:args.device_label||'Local companion'};
+          const pending=state.pending_enrollment;
+          if(pending&&(pending.server!==server.origin||JSON.stringify({...pending.body,idempotency_key:undefined})!==JSON.stringify(body)))throw new Error('A previous join has an uncertain result. Retry with the same server, invite and username to recover it safely.');
+          state.server=server.origin;
+          state.pending_enrollment ||= {server:server.origin,body:{...body,idempotency_key:args.idempotency_key||randomUUID()}};
+          this.store.save();
+          const identity=await this.remote.mutate(args.code?'/v1/join':'/v1/networks',state.pending_enrollment.body);
+          Object.assign(state,identity);delete state.pending_enrollment;this.store.save(); await this.sync();
+          return {network:state.network,member:state.member,credential_storage:'Restricted-permission local file; OS keychain integration is deferred.'};
+        }catch(error){if(error instanceof RemoteError&&error.status<500&&![408,429].includes(error.status)){delete state.pending_enrollment;this.store.save();}throw error;}
+        finally{this.enrolling=false;}
       }
-      case 'invite': return this.remote.mutate(`/v1/networks/${state.network?.id}/invites`);
+      case 'invite': {
+        if(state.member?.role!=='admin')throw new Error('Only a network admin can create invitations');
+        return {...await this.remote.mutate(`/v1/networks/${state.network?.id}/invites`),server:state.server};
+      }
       case 'list_members': return {members:state.members};
       case 'find_repos': {
         const query=String(args.query||'').toLowerCase().split(/\s+/).filter(Boolean);
