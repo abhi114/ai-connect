@@ -12,15 +12,18 @@ The dashboard opens on **Home**, showing requests needing your attention,
 in-progress work, queued requests (oldest first), and work waiting on others.
 Open an item to use its existing approval/review controls in **Chats**.
 Chats retains network messages, project/person history, filters and the composer.
-Use the navigation toggle to hide the left sidebar, and **Show/Hide details** to
+Home, Chats and Settings live in the sidebar. Collapse it to a slim navigation
+rail with the attached menu button, and use **Show/Hide details** to
 control the right inspector. Details start collapsed and open when selecting a
-request. Switching Home/Chats preserves the current draft and conversation view.
+request. Switching tabs preserves the current draft and conversation view.
+Chats uses a compact header and composer to leave more vertical room for history.
+**Settings** opens network setup, invitations and Codex integration in the main area.
 
 ### Dashboard onboarding (recommended after installing prerequisites)
 
 Run `npm run cli -- dashboard` (`npm.cmd` in Windows PowerShell). This starts
 the local companion if necessary and prints its authenticated localhost URL.
-Open that URL, then choose **Network & setup**:
+Open that URL, then choose **Settings → Network & setup**:
 
 - Admins can create a single-use invite and copy its server URL, code and expiry.
   Share it privately. Ordinary members cannot generate invites.

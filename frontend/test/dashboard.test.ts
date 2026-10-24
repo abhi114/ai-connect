@@ -48,3 +48,14 @@ test('Home is the landing tab and panels release chat space when collapsed',()=>
   assert.match(js,/Queued · oldest first/);
   assert.match(js,/ArrowLeft.*ArrowRight/);
 });
+
+test('sidebar navigation and full-page Settings preserve vertical chat space',()=>{
+  assert.match(html,/aria-orientation="vertical"/);
+  assert.match(html,/id="tab-settings" role="tab"/);
+  assert.match(html,/<section id="setup-dialog" role="tabpanel"/);
+  assert.doesNotMatch(html,/<dialog id="setup-dialog"|id="setup-open"|id="setup-close"/);
+  assert.match(js,/\.prepend\(\$\('#workspace-bar'\)\)/);
+  assert.match(css,/sidebar-collapsed>\.sidebar\{display:flex/);
+  assert.match(css,/main\.chat-mode header\{padding:9px 18px/);
+  assert.match(css,/#compose-body\{[^}]*height:44px/);
+});
