@@ -15,6 +15,10 @@ for the upgrade sequence, fingerprints, legacy-history handling and limitations.
 check and reconnect to a new tunnel origin without editing `state.json` or restarting
 the companion. Explicitly approve sending your existing credential to that URL.
 It must expose the same backend database, network, member, device and signing key.
+If the existing local public key was never registered because the old tunnel was
+offline, the check registers that same key after verifying identity and reads it
+back before saving the URL. A different registered key stays blocked; no keypair
+is regenerated or replaced.
 Failed checks leave the old URL intact; active workers must finish first.
 Update Mac and Windows separately. This control will be removed after local testing,
 not retained as a disabled production feature.
