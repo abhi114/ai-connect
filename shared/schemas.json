@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:pantheon:protocol:v1",
+  "$defs": {
+    "idempotencyKey": {"type":"string","minLength":8,"maxLength":200},
+    "gitObjectId": {"type":"string","pattern":"^(?:[a-fA-F0-9]{40}|[a-fA-F0-9]{64})$"},
+    "requestCreate": {
+      "type":"object","additionalProperties":false,"required":["repo_id","kind","title","body","idempotency_key"],
+      "properties": {
+        "repo_id":{"type":"string","minLength":1,"maxLength":100},
+        "recipient_member_id":{"type":"string"},
+        "kind":{"enum":["question","change"]},
+        "title":{"type":"string","minLength":1,"maxLength":200},
+        "body":{"type":"string","minLength":1,"maxLength":16000},
+        "base_ref":{"type":"string","minLength":1,"maxLength":240},
+        "constraints":{"type":"array","maxItems":20,"items":{"type":"string","minLength":1,"maxLength":2000}},
+        "idempotency_key":{"$ref":"#/$defs/idempotencyKey"}
+      }
+    },
+    "leaseHeartbeat": {
+      "type":"object","additionalProperties":false,"required":["lease_token","idempotency_key"],
+      "properties":{"lease_token":{"type":"string","minLength":1,"maxLength":200},"idempotency_key":{"$ref":"#/$defs/idempotencyKey"}}
+    },
+    "error": {
+      "type":"object","required":["error"],"properties":{"error":{"type":"object","required":["code","message"],"properties":{"code":{"type":"string"},"message":{"type":"string"}}}}
+    }
+  }
+}

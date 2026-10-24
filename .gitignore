@@ -1,0 +1,64 @@
+# Dependencies and generated output
+node_modules/
+dist/
+build/
+coverage/
+.cache/
+*.tsbuildinfo
+*.tgz
+*.zip
+
+# Local configuration and credentials (only sanitized examples belong in Git)
+.env
+.env.*
+!.env.example
+!.env.sample
+.npmrc
+.repo-network/
+.aiconnect/
+.codex/
+.pantheon/
+.ssh/
+.aws/
+.cloudflared/
+credentials.json
+auth.json
+secrets/
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Companion profiles, sessions and generated worktrees
+state.json
+state.json.tmp
+dashboard.json
+profiles/
+worktrees/
+*.sock
+*.pid
+*.log
+logs/
+
+# Databases and backups contain membership, messages and credentials
+data/
+backups/
+*.sqlite
+*.sqlite-*
+*.sqlite3
+*.sqlite3-*
+*.db
+*.db-*
+*.dump
+*.bak
+*.backup
+
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

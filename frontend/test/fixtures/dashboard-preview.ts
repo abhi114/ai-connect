@@ -1,0 +1,40 @@
+// Isolated UI QA fixture. Never uses the user's profile, relay, or Codex account.
+import { mkdtemp, mkdir, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createApp } from '../../../backend/src/server.ts';
+import { startDaemon } from '../../src/daemon.ts';
+import { Core } from '../../src/core.ts';
+import { Store } from '../../src/store.ts';
+import { git } from '../../src/git.ts';
+
+const dir=await mkdtemp(join(tmpdir(),'aiconnect-dashboard-qa-'));
+const repo=join(dir,'demo-shop');await mkdir(repo);
+await writeFile(join(repo,'README.md'),'# Demo shop\nA small shopping cart for dashboard QA.\n');
+await git(repo,'init');await git(repo,'add','README.md');await git(repo,'-c','user.name=QA','-c','user.email=qa@localhost','commit','-m','Fixture');
+const relay=createApp({rateLimit:10000});await new Promise<void>(resolve=>relay.server.listen(0,'127.0.0.1',resolve));
+const server=`http://127.0.0.1:${(relay.server.address() as any).port}`;
+const daemon=await startDaemon(join(dir,'owner'),0);const alice=daemon.core;
+const bob=new Core(new Store(join(dir,'bob'))),carol=new Core(new Store(join(dir,'carol')));
+alice.worker.runner=async(request,worktree)=>{
+  if(request.kind==='change')await writeFile(join(worktree,'README.md'),'# Demo shop\nAdded SAVE10 for this isolated QA fixture.\n');
+  return {answer:request.kind==='change'?'Added SAVE10 to the fixture documentation. No real model was used.':'The project calculates totals using integer cents, with tax on merchandise and free shipping at the threshold. This is an isolated QA response.',sources:[{path:'README.md',line:1}]};
+};
+alice.modelLoader=async()=>({fetched_at:Date.now(),models:[{model:'qa-fast',name:'QA Fast (fixture)',efforts:['low','medium'],isDefault:true,defaultEffort:'low'},{model:'qa-deep',name:'QA Deep (fixture)',efforts:['medium','high'],isDefault:false,defaultEffort:'medium'}]});
+alice.folderPicker=async()=>({path:repo});
+await alice.dispatch('enroll',{name:'AIConnect UI Test Network',handle:'alice',server});
+for(const core of [bob,carol])await core.dispatch('enroll',{code:(await alice.dispatch('invite')).code,handle:core===bob?'bob':'carol',server});
+const {repo:published}=await alice.dispatch('expose',{path:repo,name:'demo-shop',description:'Shopping-cart calculations and discounts',questions:'ask',changes:true});
+await bob.sync();await carol.sync();
+await bob.dispatch('send_message',{body:'Morning team — the demo shop is ready for a review. Ask questions in the project chat.'});
+await carol.dispatch('send_message',{body:'I will review the shipping rules today. General messages are visible to everyone in this network.'});
+await alice.dispatch('send_message',{body:'Thanks! Repository requests still need owner approval before the local agent runs.'});
+const {request:question}=await bob.dispatch('ask_repo',{repo_id:published.id,body:'How are tax and shipping calculated? Please cite the relevant file.'});
+await alice.dispatch('approve',{request_id:question.id});
+for(let i=0;i<100&&alice.store.state.runs[question.id]?.state!=='complete';i++)await new Promise(resolve=>setTimeout(resolve,30));
+await bob.dispatch('request_change',{repo_id:published.id,body:'Add a SAVE10 discount code with tests and update the README.'});
+await carol.dispatch('ask_repo',{repo_id:published.id,body:'Which input validation rules keep invalid quantities out of the cart?'});
+await alice.sync();
+const timer=setInterval(()=>{void bob.sync();void carol.sync()},10000);
+console.log(JSON.stringify({preview_url:daemon.url,fixture_directory:dir}));
+for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{clearInterval(timer);bob.worker.stop();carol.worker.stop();void daemon.stop().then(()=>relay.close()).then(()=>process.exit(0));});
