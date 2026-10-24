@@ -19,6 +19,9 @@ npm run cli -- join <code> --handle <handle> [--server URL]
 npm run cli -- invite
 npm run cli -- status|members|inbox|doctor|dashboard
 npm run cli -- models
+npm run cli -- trust list
+npm run cli -- trust block <device-id>
+npm run cli -- trust confirm <device-id> --fingerprint <sha256> --confirmed true
 npm run cli -- request approve <request-id> [--model <catalog-model> --effort <supported-effort>]
 npm run cli -- repos search [words]
 npm run cli -- repo expose <path> --name <slug> --description <text> [--questions ask|auto|off] [--changes]
@@ -53,6 +56,10 @@ export async function main(argv=process.argv.slice(2)) {
   }
   if(verb==='dashboard'){await ensureService();console.log(JSON.parse(readFileSync(join(dataDir(),'dashboard.json'),'utf8')).url);return}
   let method=verb,args:any={};
+  if(verb==='trust'){
+    if(action==='list')console.log(JSON.stringify(await localCall('trust_status'),null,2));
+    else console.log(JSON.stringify(await localCall('trust_update',{device_id:rest[0],action,fingerprint:o.fingerprint,confirmed:bool(o.confirmed)}),null,2));return;
+  }
   if(verb==='create'||verb==='join'){method='enroll';args={name:verb==='create'?action:undefined,code:verb==='join'?action:undefined,handle:o.handle,server:o.server};}
   else if(verb==='status')method='network_status';
   else if(verb==='members')method='list_members';

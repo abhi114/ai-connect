@@ -6,6 +6,7 @@ import { Remote, RemoteError } from './remote.ts';
 import { authorize } from './policy.ts';
 import { approvedPath, git, inspectDiff, makeWorktree, verifyBinding } from './git.ts';
 import { runCodex } from './codex.ts';
+import { signOutgoing, requireVerified } from './trust.ts';
 
 export class Worker {
   store: Store; remote: Remote; active = new Map<string,AbortController>();
@@ -117,9 +118,15 @@ export class Worker {
   async deliverResult(run:Run) {
     run.delivery_key ||= randomUUID(); this.store.save();
     try {
-      await this.remote.mutate(`/v1/requests/${run.request_id}/complete`,{lease_token:run.lease_token,result:run.result,idempotency_key:run.delivery_key});
+      const current=this.store.state.requests.find(r=>r.id===run.request_id);
+      if(!current)throw Error('Original request unavailable');
+      requireVerified(this.store.state,current);
+      const path=`/v1/requests/${run.request_id}/complete`;
+      run.result_signature ||= signOutgoing(this.store,path,{result:run.result}).signature;this.store.save();
+      await this.remote.mutate(path,{lease_token:run.lease_token,result:run.result,signature:run.result_signature,idempotency_key:run.delivery_key});
       run.state='complete'; this.store.save();
     } catch(error) {
+      run.error='Result delivery held: '+(error instanceof Error?error.message:String(error));this.store.save();
       if(error instanceof RemoteError && error.status<500 && error.status!==429) {
         run.state='delivery_failed';run.error='Result delivery rejected: '+error.message;this.store.save();
       }

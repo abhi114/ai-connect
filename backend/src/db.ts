@@ -7,6 +7,8 @@ export function openDatabase(path: string): DatabaseSync {
   const db = new DatabaseSync(path);
   db.exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
     CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS device_keys (device_id TEXT PRIMARY KEY REFERENCES devices(id), public_key TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS signed_records (network_id TEXT NOT NULL, signature_id TEXT NOT NULL, kind TEXT NOT NULL, record_id TEXT NOT NULL, envelope TEXT NOT NULL, PRIMARY KEY(network_id,signature_id));
     CREATE TABLE IF NOT EXISTS networks (id TEXT PRIMARY KEY, name TEXT NOT NULL, created_at INTEGER NOT NULL);
     CREATE TABLE IF NOT EXISTS members (id TEXT PRIMARY KEY, network_id TEXT NOT NULL REFERENCES networks(id), handle TEXT NOT NULL COLLATE NOCASE, display_name TEXT NOT NULL, role TEXT NOT NULL, revoked_at INTEGER, UNIQUE(network_id,handle));
     CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id), public_label TEXT NOT NULL, credential_hash TEXT NOT NULL UNIQUE, expires_at INTEGER NOT NULL, last_seen_at INTEGER NOT NULL, revoked_at INTEGER);

@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { signedRequest } from './fixtures/signing.ts';
 import assert from 'node:assert/strict';
 import { fileURLToPath } from 'node:url';
 import { discoverModels, validateExecution, executionArgs } from '../src/models.ts';
@@ -28,6 +29,8 @@ test('approval is bound to model and effort, with legacy default approvals prese
   const request:any={id:'q',repo_id:'r',network_id:'n',owner_member_id:'owner',sender_member_id:'sender',kind:'change',status:'queued'};
   const settings={model:'test-model',reasoning_effort:'high'};
   const state:any={member:{id:'owner',network_id:'n'},members:[{id:'sender',network_id:'n'}],repos:[{id:'r',network_id:'n',owner_member_id:'owner',availability:'active',changes_enabled:true}],bindings:{r:{changes:true}},approvals:{q:approvalDigest(request,settings)},execution_options:{q:settings}};
+  signedRequest(state,request);
+  state.approvals.q=approvalDigest(request,settings);
   assert.doesNotThrow(()=>authorize(state,request));
   state.execution_options.q={model:'test-model',reasoning_effort:'low'};
   assert.throws(()=>authorize(state,request),/approved locally/);

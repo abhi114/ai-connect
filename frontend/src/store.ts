@@ -3,6 +3,8 @@ import { homedir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import type { ExecutionOptions } from './models.ts';
+import type { Pin } from './trust.ts';
+import type { SignedEnvelope } from '../../shared/signing.ts';
 
 export interface Binding {
   repo_id: string; path: string; git_dir: string; name: string;
@@ -10,6 +12,7 @@ export interface Binding {
   allowed_paths: string[]; max_diff_bytes: number;
 }
 export interface Run {
+  result_signature?: SignedEnvelope;
   execution?: ExecutionOptions;
   request_id: string; repo_id: string; state: string; lease_token?: string;
   worktree?: string; branch?: string; base_commit?: string; answer?: string;
@@ -17,6 +20,9 @@ export interface Run {
   error?: string; result?: unknown; delivery_key?: string;
 }
 export interface State {
+  signing?: {public_key:string;private_key:string};
+  trust?: Record<string,Pin>;
+  message_receipts?: Record<string,string>;
   pending_enrollment?: {server:string;body:any};
   execution_options?: Record<string, ExecutionOptions>;
   server: string; token?: string; member?: any; device?: any; network?: any;

@@ -4,6 +4,7 @@ import { createHash, randomBytes, createCipheriv, createDecipheriv } from 'node:
 import type { DatabaseSync, SQLInputValue } from 'node:sqlite';
 import type { Socket } from 'node:net';
 import { openDatabase } from './db.ts';
+import { validKey, registration, verifyData, verifyEnvelope, requestPayload, resultPayload } from '../../shared/signing.ts';
 import { HANDLE_PATTERN, GIT_OID_PATTERN, MAX_BODY_BYTES, WORKER_DONE_STATUSES } from '../../shared/protocol.ts';
 import type { Member, Repo, RepoRequest, NetworkEvent, NetworkMessage, Result, RequestStatus } from '../../shared/protocol.ts';
 
@@ -91,6 +92,16 @@ export function createApp(options: ServerOptions = {}) {
     run('INSERT INTO devices VALUES (?,?,?,?,?,?,NULL)', deviceId, member.id, label, hash(token), now() + ttl, now());
     return { token, member, device: publicDevice(one('SELECT * FROM devices WHERE id=?', deviceId)!), network: one('SELECT * FROM networks WHERE id=?', member.network_id) };
   }
+  function signed(auth:Auth, envelope:any, kind:string, payload:any, recordId:string) {
+    const registered=one('SELECT public_key FROM device_keys WHERE device_id=?',auth.device.id);
+    // Older clients can retain readable history during rolling upgrades. Once a
+    // device registers a key it can never downgrade its writes to unsigned.
+    if(!envelope&&!registered)return;
+    if(!envelope||envelope.kind!==kind||envelope.network_id!==auth.member.network_id||envelope.member_id!==auth.member.id||envelope.device_id!==auth.device.id||envelope.public_key!==registered?.public_key||!verifyEnvelope(envelope,payload))fail(400,'invalid_signature','A valid registered device signature is required');
+    if(one('SELECT signature_id FROM signed_records WHERE network_id=? AND signature_id=?',auth.member.network_id,envelope.id))fail(409,'signature_replay','Signed message already submitted; retry using its original idempotency key');
+    run('INSERT INTO signed_records VALUES (?,?,?,?,?)',auth.member.network_id,envelope.id,kind,recordId,JSON.stringify(envelope));
+  }
+  function proof(network:string,kind:string,record:string){const row=one('SELECT envelope FROM signed_records WHERE network_id=? AND kind=? AND record_id=?',network,kind,record);return row?JSON.parse(row.envelope):undefined;}
   function repoById(repoId: string, auth: Auth): Repo {
     const row = one('SELECT payload FROM repos WHERE id=? AND network_id=?', repoId, auth.member.network_id);
     if (!row) fail(404, 'not_found', 'Repository not found');
@@ -187,6 +198,16 @@ export function createApp(options: ServerOptions = {}) {
     }
     if (!auth) fail(401, 'unauthorized', 'Authentication required');
     const member = auth.member;
+    if(method==='GET'&&path==='/v1/keys')return {body:{keys:all('SELECT d.id device_id,d.member_id,m.network_id,k.public_key,d.revoked_at device_revoked_at,m.revoked_at member_revoked_at FROM device_keys k JOIN devices d ON d.id=k.device_id JOIN members m ON m.id=d.member_id WHERE m.network_id=?',member.network_id)}};
+    if(method==='POST'&&path==='/v1/keys'){
+      allowed(body,['public_key','proof','previous_proof']);
+      const key=body.public_key, data=registration(member.network_id,member.id,auth.device.id,key);
+      if(!validKey(key)||!verifyData(key,data,body.proof))fail(400,'invalid_key','Valid Ed25519 key and proof of possession required');
+      const old=one('SELECT public_key FROM device_keys WHERE device_id=?',auth.device.id);
+      if(old&&old.public_key!==key&&!verifyData(old.public_key,data,body.previous_proof))fail(409,'key_change','Key replacement requires the existing device key');
+      run('INSERT INTO device_keys VALUES (?,?) ON CONFLICT(device_id) DO UPDATE SET public_key=excluded.public_key',auth.device.id,key);
+      return {body:{registered:true}};
+    }
     if (method === 'GET' && path === '/v1/messages') {
       const before = Number(url.searchParams.get('before') ?? Number.MAX_SAFE_INTEGER);
       const limit = Number(url.searchParams.get('limit') ?? 50);
@@ -194,13 +215,15 @@ export function createApp(options: ServerOptions = {}) {
       const rows = all('SELECT * FROM network_messages WHERE network_id=? AND id<? ORDER BY id DESC LIMIT ?', member.network_id, before, limit + 1);
       const page = rows.slice(0, limit);
       const next_before = rows.length > limit ? page.at(-1)!.id : null;
-      return {body: {messages: page.reverse(), next_before}};
+      return {body: {messages: page.reverse().map(m=>({...m,signature:proof(member.network_id,'message',String(m.id))})), next_before}};
     }
     if (method === 'POST' && path === '/v1/messages') {
-      allowed(body, ['body']);
+      allowed(body, ['body','signature']);
       const text = str(body, 'body', 8000);
       const inserted = run('INSERT INTO network_messages(network_id,sender_member_id,body,created_at) VALUES (?,?,?,?)', member.network_id, member.id, text, now());
+      signed(auth,body.signature,'message',{body:text},String(inserted.lastInsertRowid));
       const message = one('SELECT * FROM network_messages WHERE id=?', inserted.lastInsertRowid) as unknown as NetworkMessage;
+      Object.assign(message,{signature:body.signature});
       event(member.network_id, member.id, 'chat.message', {message});
       return {status: 201, body: {message}};
     }
@@ -278,7 +301,7 @@ export function createApp(options: ServerOptions = {}) {
       event(member.network_id, member.id, previous ? 'repo.updated' : 'repo.published', {repo}); return {status: previous ? 200 : 201, body: {repo}};
     }
     if (method === 'POST' && path === '/v1/requests') {
-      allowed(body, ['repo_id','recipient_member_id','kind','title','body','base_ref','constraints']);
+      allowed(body, ['repo_id','recipient_member_id','kind','title','body','base_ref','constraints','signature']);
       const repo = repoById(str(body, 'repo_id', 100), auth);
       if (!['question','change'].includes(body.kind)) fail(400, 'invalid_input', 'kind must be question or change');
       if (body.recipient_member_id !== undefined && body.recipient_member_id !== repo.owner_member_id) fail(400, 'recipient_mismatch', 'Recipient does not own this repo');
@@ -286,6 +309,8 @@ export function createApp(options: ServerOptions = {}) {
       if (repo.revoked_at || repo.availability !== 'active' || !(kind === 'question' ? repo.questions_enabled : repo.changes_enabled) || !one('SELECT id FROM members WHERE id=? AND revoked_at IS NULL', repo.owner_member_id)) fail(409, 'repo_unavailable', 'Repository is unavailable or capability disabled');
       const base = str(body, 'base_ref', 240, true) || null; if (base) safeRef(base);
       const request: RepoRequest = {id: id('req'), network_id: member.network_id, repo_id: repo.id, sender_member_id: member.id, owner_member_id: repo.owner_member_id, kind, status: kind === 'change' || repo.questions_require_approval ? 'approval_pending' : 'queued', title: str(body, 'title', 200), body: str(body, 'body', 16000), base_ref: base, constraints: strings(body.constraints, 'constraints'), created_at: now(), updated_at: now(), version: 1};
+      if(body.signature){request.id=body.signature.id;Object.assign(request,{signature:body.signature});}
+      signed(auth,body.signature,'request',requestPayload(request),request.id);
       run('INSERT INTO requests VALUES (?,?,?,?,?,?,?)', request.id, member.network_id, repo.id, member.id, repo.owner_member_id, request.status, JSON.stringify(request));
       event(member.network_id, member.id, 'request.created', {request}, request.id); return {status: 201, body: {request}};
     }
@@ -297,7 +322,7 @@ export function createApp(options: ServerOptions = {}) {
     match = path.match(/^\/v1\/requests\/([^/]+)(?:\/(approve|reject|cancel|claim|heartbeat|complete|fail|accept|close))?$/);
     if (match) {
       const request = requestById(match[1], auth); const action = match[2];
-      if (method === 'GET' && !action) return {body: {request, result: one('SELECT payload FROM results WHERE request_id=?', request.id) ? JSON.parse(one('SELECT payload FROM results WHERE request_id=?', request.id)!.payload) : null, events: all('SELECT * FROM events WHERE request_id=? ORDER BY id', request.id).map(e => ({...e, payload: JSON.parse(e.payload)}))}};
+      if (method === 'GET' && !action) return {body: {request, result_signature:proof(member.network_id,'result',request.id), result: one('SELECT payload FROM results WHERE request_id=?', request.id) ? JSON.parse(one('SELECT payload FROM results WHERE request_id=?', request.id)!.payload) : null, events: all('SELECT * FROM events WHERE request_id=? ORDER BY id', request.id).map(e => ({...e, payload: JSON.parse(e.payload)}))}};
       if (method !== 'POST' || !action) fail(404, 'not_found', 'Endpoint not found');
       if (['approve','reject'].includes(action)) {
         allowed(body, ['reason']); owner(request, auth);
@@ -324,7 +349,8 @@ export function createApp(options: ServerOptions = {}) {
         if (request.status === 'claimed') saveRequest(request, 'running', member.id, 'request.running');
         return {body: {request, expires_at: expires, attempt: lease.attempt}};
       } else if (action === 'complete') {
-        allowed(body, ['lease_token','result']); requireLease(request, auth, body); const result = resultValid(body.result, request);
+        allowed(body, ['lease_token','result','signature']); requireLease(request, auth, body); const result = resultValid(body.result, request);
+        signed(auth,body.signature,'result',resultPayload(request,result),request.id);
         run('INSERT INTO results VALUES (?,?,?)', request.id, JSON.stringify(result), now());
         saveRequest(request, request.kind === 'question' ? 'answered' : 'review_ready', member.id, 'request.completed', {result});
         return {body: {request, result}};

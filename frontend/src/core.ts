@@ -8,6 +8,8 @@ import { command } from './process.ts';
 import { discoverModels, validateExecution, type ModelCatalog } from './models.ts';
 import { pickFolder } from './folder-picker.ts';
 import { CodexIntegration } from './integration.ts';
+import { verifyRequest, verification, verifyMessage, requireVerified, trustView, changeTrust } from './trust.ts';
+import { resultPayload } from '../../shared/signing.ts';
 
 export class Core {
   folderPicker=pickFolder;
@@ -24,6 +26,7 @@ export class Core {
     if(this.stopping || this.syncing || !this.store.state.token) return;
     this.syncing=true;
     try {
+      await this.remote.refreshTrust();
       await this.remote.flush();
       await this.remote.mutate('/v1/presence');
       const [identity,members,repos,requests,events]=await Promise.all([
@@ -33,6 +36,9 @@ export class Core {
       Object.assign(this.store.state,{member:identity.member,network:identity.network,members:members.members,repos:repos.repos,requests:requests.requests});
       this.store.state.cursor=events.cursor ?? events.events?.at(-1)?.id ?? this.store.state.cursor;
       delete this.store.state.connection_error; this.connected=true; this.store.save();
+      if(this.store.state.outbox.some(i=>!i.body.signature&&['/v1/requests','/v1/messages'].includes(i.path))){
+        this.store.state.connection_error='Legacy unsigned outgoing messages are held, not resent. Check delivery before submitting a new signed request.';this.store.save();
+      }
       if(!this.stopping)await this.worker.tick();
     } catch(error) { this.connected=false; this.worker.stop(); this.store.state.connection_error=error instanceof Error?error.message:String(error); this.store.save(); }
     finally { this.syncing=false; }
@@ -40,6 +46,16 @@ export class Core {
   async dispatch(method:string,args:any={}) {
     const state=this.store.state;
     switch(method) {
+      case 'trust_status': {
+        let refresh_error:string|undefined;
+        if(state.token)try{await this.remote.refreshTrust()}catch(e){refresh_error=e instanceof Error?e.message:String(e)}
+        return {...trustView(this.store),refresh_error};
+      }
+      case 'trust_update': {
+        const result=changeTrust(this.store,args);
+        if(args.action==='block')for(const r of state.requests)if(r.signature?.device_id===args.device_id)this.worker.stop(r.id);
+        await this.worker.tick();return result;
+      }
       case 'integration_status': return this.integration.status();
       case 'integration_register': return this.integration.register(args);
       case 'pick_folder': return this.folderPicker();
@@ -48,7 +64,9 @@ export class Core {
         if(!Number.isInteger(limit)||limit<1||limit>100)throw new Error('Message limit must be 1–100');
         const query=new URLSearchParams({limit:String(limit)});
         if(args.before!==undefined){if(!Number.isSafeInteger(args.before)||args.before<1)throw new Error('Invalid message cursor');query.set('before',String(args.before));}
-        return this.remote.call(`/v1/messages?${query}`);
+        await this.remote.refreshTrust();
+        const page=await this.remote.call(`/v1/messages?${query}`);
+        return {...page,messages:page.messages.map((m:any)=>({...m,verification:verifyMessage(this.store,m)}))};
       }
       case 'send_message': {
         if(typeof args.body!=='string'||!args.body.trim()||args.body.length>8000)throw new Error('Message must contain 1–8000 characters');
@@ -57,7 +75,7 @@ export class Core {
       }
       case 'list_models': return this.models(args.refresh===true);
       case 'network_status': return {network:state.network,member:state.member,connected:this.connected,pending_count:state.outbox.length,error:state.connection_error};
-      case 'snapshot': return {server:state.server,network:state.network,member:state.member,members:state.members,repos:state.repos,requests:state.requests,bindings:state.bindings,runs:state.runs,connected:this.connected,error:state.connection_error,pending:state.outbox.length};
+      case 'snapshot': return {server:state.server,network:state.network,member:state.member,members:state.members,repos:state.repos,requests:state.requests.map(r=>({...r,verification:verifyRequest(state,r)})),bindings:state.bindings,runs:state.runs,connected:this.connected,error:state.connection_error,pending:state.outbox.length};
       case 'enroll': {
         if(state.token) throw new Error('This profile is already enrolled. Use a separate RN_HOME for another member.');
         if(this.enrolling)throw new Error('Joining is already in progress');
@@ -110,13 +128,20 @@ export class Core {
         if(typeof args.repo_id!=='string' || !args.repo_id) throw new Error('A stable repo_id is required');
         const repo=state.repos.find(r=>r.id===args.repo_id); if(!repo) throw new Error('Repo not found; run find_repos first');
         const body=String(args.body||args.question||args.goal||'').trim(); if(!body || body.length>16_000) throw new Error('Request body must contain 1–16000 characters');
-        return this.remote.durable('/v1/requests',{repo_id:repo.id,recipient_member_id:repo.owner_member_id,kind:method==='ask_repo'?'question':'change',title:String(args.title||body.slice(0,100)),body,idempotency_key:args.idempotency_key||randomUUID()});
+        return this.remote.durable('/v1/requests',{repo_id:repo.id,recipient_member_id:repo.owner_member_id,kind:method==='ask_repo'?'question':'change',title:String(args.title||body.slice(0,100)).trim(),body,idempotency_key:args.idempotency_key||randomUUID()});
       }
-      case 'list_my_requests': return {requests:state.requests};
-      case 'get_request': return {...await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`),local_run:state.runs[args.request_id],local_execution:state.execution_options?.[args.request_id]};
+      case 'list_my_requests': return {requests:state.requests.map(r=>({...r,verification:verifyRequest(state,r)}))};
+      case 'get_request': {
+        await this.remote.refreshTrust();
+        const data=await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`);
+        const verified=verifyRequest(state,data.request);
+        const resultVerification=data.result?verification(state,data.result_signature,'result',resultPayload(data.request,data.result),data.request.owner_member_id):undefined;
+        return {...data,request:{...data.request,verification:verified},result_verification:resultVerification,local_run:state.runs[args.request_id],local_execution:state.execution_options?.[args.request_id]};
+      }
       case 'approve': {
         const {request}=await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`);
         if(request.owner_member_id!==state.member?.id || !state.bindings[request.repo_id]) throw new Error('Only the bound repo owner may approve locally');
+        await this.remote.refreshTrust();requireVerified(state,request);
         if(request.status!=='approval_pending' && request.status!=='queued') throw new Error('Request cannot be approved in its current state');
         if(state.runs[request.id])throw new Error('Request already has a local run; execution settings are locked');
         const execution=validateExecution(args.execution,args.execution?.model?await this.models(true):undefined);

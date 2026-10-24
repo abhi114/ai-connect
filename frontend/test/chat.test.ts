@@ -41,7 +41,7 @@ test('dashboard general chat uses existing membership and preserves participant 
 
 test('offline general chat queues once and keeps its idempotency key on retry',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'aiconnect-chat-offline-'));const core=new Core(new Store(dir));
-  core.store.state.member={id:'owner'};let online=false;const keys:string[]=[];
+  core.store.state.member={id:'owner',network_id:'network'};core.store.state.device={id:'device'};let online=false;const keys:string[]=[];
   core.remote.call=async(path,method,body)=>{keys.push(body.idempotency_key);if(!online)throw Error('offline');return {message:{id:1}};};
   const result=await core.dispatch('send_message',{body:'Send when connected'});
   assert.equal(result.pending,true);assert.equal(core.store.state.outbox.length,1);
@@ -50,7 +50,7 @@ test('offline general chat queues once and keeps its idempotency key on retry',a
 
 test('rate limits and temporary timeouts retain queued chat until a successful retry',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'aiconnect-chat-retry-'));const core=new Core(new Store(dir));
-  core.store.state.member={id:'owner'};let status=429;const keys:string[]=[];
+  core.store.state.member={id:'owner',network_id:'network'};core.store.state.device={id:'device'};let status=429;const keys:string[]=[];
   core.remote.call=async(path,method,body)=>{keys.push(body.idempotency_key);if(status)throw new RemoteError(status,'retry later');return {message:{id:1}};};
   assert.equal((await core.dispatch('send_message',{body:'Do not lose this message'})).pending,true);
   await assert.rejects(core.remote.flush());assert.equal(core.store.state.outbox.length,1);

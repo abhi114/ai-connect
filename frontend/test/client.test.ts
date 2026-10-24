@@ -85,6 +85,7 @@ test('localhost dashboard requires token, rejects hostile origins and serves CSP
 
 test('outbound retries retain the exact idempotency key and restart never re-executes old jobs',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'rn-recovery-'));const store=new Store(dir);const remote=new Remote(store);
+  store.state.member={id:'owner',network_id:'network'};store.state.device={id:'device'};
   const sent:any[]=[];let offline=true;
   remote.call=async(path,method,body)=>{sent.push({path,method,body});if(offline)throw Error('connection lost');return {request:{id:'durable'}}};
   const queued=await remote.durable('/v1/requests',{body:'hello'});assert.equal(queued.pending,true);assert.equal(store.state.outbox.length,1);

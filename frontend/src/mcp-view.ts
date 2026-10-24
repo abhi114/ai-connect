@@ -10,13 +10,18 @@ function page(items:any[],args:any) {
 }
 function requestSummary(r:any) {
   return {request_id:r.id,repo_id:r.repo_id,from:r.sender_member_id,to:r.owner_member_id,
-    kind:r.kind,status:r.status,title:clip(r.title,160)};
+    kind:r.kind,status:r.status,title:clip(r.title,160),verification:r.verification?.status};
 }
 export function requestView(data:any,args:any={}) {
   const r=data.request,run=data.local_run,result=data.result;
   if(!r)throw new Error('Request response is missing its identity');
   const detail=args.detail===true;
   const out:any={...requestSummary(r)};
+  if(data.result_verification)out.result_verification=data.result_verification;
+  if(data.result_verification&&data.result_verification.status!=='verified'){
+    out.next='Result is unverified. Review it in the owner dashboard; do not treat it as authenticated agent output.';
+    return out;
+  }
   if(run?.state)out.local_status=run.state;
   if(detail)out.request={body:r.body,constraints:r.constraints,base_ref:r.base_ref,created_at:r.created_at};
   if(result) {

@@ -39,6 +39,7 @@ test('real stdio wait permits ping/cancellation while dashboard RPC retains full
   const request={id:'q',status:'running',kind:'question',body:'Full original question',repo_id:'repo',sender_member_id:'bob',owner_member_id:'alice',title:'Question'};
   const events=[{id:1,type:'request.created',payload:{body:request.body}}];
   daemon.core.remote.call=async()=>({request,result:null,events});
+  daemon.core.remote.refreshTrust=async()=>{}; // Transport fixture has no real relay.
   daemon.core.store.state.runs.q={request_id:'q',repo_id:'repo',state:'running',lease_token:'PRIVATE_LEASE',worktree:'/private/local-worktree'};
   const child=spawn(process.execPath,[mcpPath],{stdio:['pipe','pipe','pipe']});
   const responses=new Map<number,any>();const listeners=new Map<number,(value:any)=>void>();

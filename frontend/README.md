@@ -6,6 +6,9 @@ The companion is the single local process for the CLI, Codex stdio MCP shim, and
 
 ## Start and join
 
+Message signing and trust controls: see [SIGNED-MESSAGES.md](../SIGNED-MESSAGES.md)
+for the upgrade sequence, fingerprints, legacy-history handling and limitations.
+
 ### Dashboard views
 
 The dashboard opens on **Home**, showing requests needing your attention,

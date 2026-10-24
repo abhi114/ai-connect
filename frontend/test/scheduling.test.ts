@@ -1,4 +1,5 @@
 import test from 'node:test';
+import { signedRequest } from './fixtures/signing.ts';
 import assert from 'node:assert/strict';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -21,7 +22,7 @@ async function fixture() {
   const worker=new Worker(store,remote);
   const started:string[]=[];
   worker.execute=async(request,run)=>{started.push(request.id);run.state='running';};
-  const request=(id:string,repo:string,created:number,sender='alice')=>({id,repo_id:repo,network_id:'network',owner_member_id:'owner',sender_member_id:sender,kind:'question',status:'queued',created_at:created});
+  const request=(id:string,repo:string,created:number,sender='alice')=>signedRequest(store.state,{id,repo_id:repo,network_id:'network',owner_member_id:'owner',sender_member_id:sender,kind:'question',status:'queued',created_at:created});
   return {store,worker,remote,started,request};
 }
 

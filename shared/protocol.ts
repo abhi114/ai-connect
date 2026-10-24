@@ -1,4 +1,8 @@
 /** Wire protocol v1. Runtime: Node >=24; snake_case fields over HTTP. */
+import type { SignedEnvelope } from './signing.ts';
+export interface Verification { status:'verified'|'unsigned'|'invalid'|'unknown_key'|'key_changed'|'blocked'|'revoked'; detail:string; fingerprint?:string }
+export interface RepoRequest {signature?:SignedEnvelope;verification?:Verification}
+export interface NetworkMessage {signature?:SignedEnvelope;verification?:Verification}
 export type RequestKind = 'question' | 'change';
 export type RequestStatus = 'approval_pending' | 'queued' | 'claimed' | 'running' | 'answered' | 'review_ready' | 'accepted' | 'closed' | 'rejected' | 'cancelled' | 'failed';
 export interface Network { id: string; name: string; created_at: number }

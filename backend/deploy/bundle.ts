@@ -9,7 +9,7 @@ mkdirSync(outputRoot, {recursive:true});
 const output = mkdtempSync(join(outputRoot, 'railway-'));
 const files = ['backend/package.json', 'backend/src/main.ts', 'backend/src/config.ts',
   'backend/src/server.ts', 'backend/src/db.ts', 'backend/src/backup.ts',
-  'shared/package.json', 'shared/protocol.ts'];
+  'shared/package.json', 'shared/protocol.ts', 'shared/signing.ts'];
 for (const file of files) {
   const destination = join(output, file);
   mkdirSync(dirname(destination), {recursive:true});
