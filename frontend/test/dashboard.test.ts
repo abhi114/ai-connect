@@ -3,6 +3,20 @@ import assert from 'node:assert/strict';
 import { html, css, js } from '../src/dashboard.ts';
 import { onboardingCss } from '../src/onboarding.ts';
 
+test('existing local repositories expose question-only approval policy controls',()=>{
+  const project=js.slice(js.indexOf('function renderProject()'),js.indexOf('function renderComposer()'));
+  assert.match(project,/if\(binding\)/);
+  assert.match(project,/Repository question approval/);
+  assert.match(project,/Automatically answer questions/);
+  assert.match(project,/questions==='auto'&&!confirm/);
+  assert.match(project,/rpc\('policy',\{repo_id:r.id,questions,auto_execution:/);
+  assert.doesNotMatch(project,/changes\s*:/);
+  assert.match(project,/Change requests always require approval/);
+  assert.match(project,/Existing pending requests still need approval/);
+  assert.match(project,/Save repository settings/);
+  assert.match(project,/approvalControls\(key,true\)/);
+});
+
 test('warm light theme has readable text and consistent dialog colors',()=>{
   assert.match(css,/color-scheme:light/);
   assert.doesNotMatch(css+onboardingCss,/#0d1423|#19253b|#ae93ff|color-scheme:dark/);

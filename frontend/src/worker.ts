@@ -58,7 +58,9 @@ export class Worker {
       const lane=this.lane(binding.repo_id);
       if (Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane &&
         (this.active.has(r.request_id) || ['claiming','running','awaiting_review','delivery_pending'].includes(r.state)))) continue;
-      const run:Run={request_id:request.id,repo_id:request.repo_id,state:'claiming',execution:{...this.store.state.execution_options?.[request.id]}};
+      const explicit=this.store.state.execution_options?.[request.id];
+      const execution=explicit??(request.kind==='question'&&binding.questions==='auto'?binding.auto_execution:undefined);
+      const run:Run={request_id:request.id,repo_id:request.repo_id,state:'claiming',execution:{...execution}};
       this.store.state.runs[request.id]=run; this.store.save();
       void this.execute(request,run);
     }

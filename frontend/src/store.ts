@@ -9,6 +9,7 @@ import type { SignedEnvelope } from '../../shared/signing.ts';
 export interface Binding {
   repo_id: string; path: string; git_dir: string; name: string;
   questions: 'auto' | 'ask' | 'off'; changes: boolean; paused: boolean;
+  auto_execution?: ExecutionOptions;
   allowed_paths: string[]; max_diff_bytes: number;
 }
 export interface Run {

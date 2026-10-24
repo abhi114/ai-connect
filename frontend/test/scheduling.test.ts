@@ -26,6 +26,27 @@ async function fixture() {
   return {store,worker,remote,started,request};
 }
 
+test('automatic question models are per repository and captured when starting',async()=>{
+  const {store,worker,request}=await fixture();
+  store.state.bindings.a.auto_execution={model:'model-a',reasoning_effort:'high'};
+  store.state.bindings.b.auto_execution={model:'model-b',reasoning_effort:'low'};
+  store.state.requests=[request('a1','a',1),request('b1','b',2)];
+  await worker.tick();
+  assert.deepEqual(store.state.runs.a1.execution,{model:'model-a',reasoning_effort:'high'});
+  assert.deepEqual(store.state.runs.b1.execution,{model:'model-b',reasoning_effort:'low'});
+  store.state.bindings.a.auto_execution.model='new-model';
+  assert.equal(store.state.runs.a1.execution?.model,'model-a');
+});
+
+test('explicit request execution overrides automatic defaults, including an empty default',async()=>{
+  const {store,worker,request}=await fixture();
+  store.state.bindings.a.auto_execution={model:'automatic-model'};
+  store.state.execution_options={a1:{}};
+  store.state.requests=[request('a1','a',1)];
+  await worker.tick();
+  assert.deepEqual(store.state.runs.a1.execution,{});
+});
+
 test('different repositories run concurrently; same repository is FIFO across senders and aliases',async()=>{
   const {store,worker,started,request}=await fixture();
   // Relay returns newest first; approval-eligible work must run oldest first.

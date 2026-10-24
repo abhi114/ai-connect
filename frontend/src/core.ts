@@ -141,6 +141,7 @@ export class Core {
       }
       case 'policy': {
         const binding=state.bindings[args.repo_id]; if(!binding) throw new Error('Unknown local repo binding');
+        const autoExecution=args.auto_execution===undefined?undefined:validateExecution(args.auto_execution,args.auto_execution?.model?await this.models(true):undefined);
         if(args.questions!==undefined) { if(!['off','ask','auto'].includes(args.questions)) throw new Error('questions must be off, ask, or auto'); binding.questions=args.questions; }
         if(args.changes!==undefined) binding.changes=!!args.changes;
         if(args.paused!==undefined) binding.paused=!!args.paused;
@@ -148,6 +149,7 @@ export class Core {
           if(!Array.isArray(args.allowed_paths) || !args.allowed_paths.length || args.allowed_paths.some((p:any)=>typeof p!=='string'||p.startsWith('/')||p.includes('..')||p.includes('\\')||p.includes(':'))) throw new Error('allowed_paths must contain relative path prefixes');
           binding.allowed_paths=args.allowed_paths;
         }
+        if(autoExecution!==undefined)binding.auto_execution=autoExecution;
         this.store.save();
         if(binding.paused) for(const run of Object.values(state.runs)) if(run.repo_id===binding.repo_id) this.worker.stop(run.request_id);
         return this.remote.durable(`/v1/repos/${binding.repo_id}`,{availability:binding.paused?'paused':'active',questions_enabled:binding.questions!=='off',questions_require_approval:binding.questions==='ask',changes_enabled:binding.changes},'PATCH');
