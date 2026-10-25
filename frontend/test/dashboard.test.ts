@@ -3,6 +3,13 @@ import assert from 'node:assert/strict';
 import { html, css, js } from '../src/dashboard.ts';
 import { onboardingCss } from '../src/onboarding.ts';
 
+test('private agent workspace is distinct from network and uses explicit local/delegation actions',()=>{
+  assert.match(html,/id="tab-agent"/);assert.match(html,/Private to this computer/);
+  assert.match(js,/rpc\('local_send'/);assert.match(js,/rpc\('local_delegate'/);
+  assert.match(js,/localDrafts/);assert.match(html,/Only the task brief below is sent/);
+  assert.match(js,/No automatic continuation/);
+});
+
 test('existing local repositories expose question-only approval policy controls',()=>{
   const project=js.slice(js.indexOf('function renderProject()'),js.indexOf('function renderComposer()'));
   assert.match(project,/if\(binding\)/);

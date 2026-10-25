@@ -25,7 +25,8 @@ export class Core {
   store:Store; remote:Remote; worker:Worker; syncing=false; connected=false; stopping=false;
   constructor(store:Store) { this.store=store; this.remote=new Remote(store); this.worker=new Worker(store,this.remote);this.integration=new CodexIntegration(store.dir); }
   async sync() {
-    if(this.stopping || this.changingServer || this.syncing || !this.store.state.token) return;
+    if(this.stopping || this.changingServer || this.syncing) return;
+    if(!this.store.state.token){await this.worker.tick(false);return;}
     this.syncing=true;
     try {
       await this.remote.refreshTrust();
@@ -38,11 +39,12 @@ export class Core {
       Object.assign(this.store.state,{member:identity.member,network:identity.network,members:members.members,repos:repos.repos,requests:requests.requests});
       this.store.state.cursor=events.cursor ?? events.events?.at(-1)?.id ?? this.store.state.cursor;
       delete this.store.state.connection_error; this.connected=true; this.store.save();
+      await this.worker.local.refreshLinks();
       if(this.store.state.outbox.some(i=>!i.body.signature&&['/v1/requests','/v1/messages'].includes(i.path))){
         this.store.state.connection_error='Legacy unsigned outgoing messages are held, not resent. Check delivery before submitting a new signed request.';this.store.save();
       }
       if(!this.stopping)await this.worker.tick();
-    } catch(error) { this.connected=false; this.worker.stop(); this.store.state.connection_error=error instanceof Error?error.message:String(error); this.store.save(); }
+    } catch(error) { this.connected=false; for(const id of this.worker.active.keys())if(!this.store.state.runs[id]?.local_chat_id)this.worker.stop(id); this.store.state.connection_error=error instanceof Error?error.message:String(error); this.store.save();if(!this.stopping)await this.worker.tick(false); }
     finally { this.syncing=false; }
   }
   async dispatch(method:string,args:any={}) {
@@ -74,6 +76,17 @@ export class Core {
   private async dispatchInner(method:string,args:any={}) {
     const state=this.store.state;
     switch(method) {
+      case 'local_attach': return {binding:await this.worker.local.attach(String(args.path||''),String(args.name||''))};
+      case 'local_chats': return {chats:this.worker.local.view()};
+      case 'local_create': return {chat:this.worker.local.create(args.repo_id,String(args.title||''))};
+      case 'local_send': {
+        const execution=validateExecution(args.execution,args.execution?.model?await this.models(true):undefined);
+        const turn=this.worker.local.enqueue(args.chat_id,args.body,args.kind,execution,args.confirmed===true);await this.worker.tick(this.connected);return {turn};
+      }
+      case 'local_delegate': return this.worker.local.delegate(args.chat_id,args.repo_id,args.kind,args.body,args.confirmed===true);
+      case 'local_review': {if(args.confirmed!==true)throw Error('Confirm committing this reviewed local change');const result=await this.worker.local.review(args.turn_id);await this.worker.tick(this.connected);return result;}
+      case 'local_cancel': this.worker.local.cancel(args.turn_id);return {ok:true};
+      case 'local_close': {if(args.confirmed!==true)throw Error('Confirm closing this chat and retaining its worktree');return this.worker.local.close(args.chat_id);}
       case 'trust_status': {
         let refresh_error:string|undefined;
         if(state.token)try{await this.remote.refreshTrust()}catch(e){refresh_error=e instanceof Error?e.message:String(e)}
@@ -103,7 +116,7 @@ export class Core {
       }
       case 'list_models': return this.models(args.refresh===true);
       case 'network_status': return {network:state.network,member:state.member,connected:this.connected,pending_count:state.outbox.length,error:state.connection_error};
-      case 'snapshot': return {server:state.server,network:state.network,member:state.member,members:state.members,repos:state.repos,requests:state.requests.map(r=>({...r,verification:verifyRequest(state,r)})),bindings:state.bindings,runs:state.runs,connected:this.connected,error:state.connection_error,pending:state.outbox.length};
+      case 'snapshot': return {server:state.server,network:state.network,member:state.member,members:state.members,repos:state.repos,requests:state.requests.map(r=>({...r,verification:verifyRequest(state,r)})),bindings:state.bindings,runs:state.runs,local_chats:this.worker.local.view(),connected:this.connected,error:state.connection_error,pending:state.outbox.length};
       case 'enroll': {
         if(state.token) throw new Error('This profile is already enrolled. Use a separate RN_HOME for another member.');
         if(this.enrolling)throw new Error('Joining is already in progress');

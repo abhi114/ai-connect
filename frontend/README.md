@@ -11,6 +11,44 @@ for the upgrade sequence, fingerprints, legacy-history handling and limitations.
 
 ### Dashboard views
 
+**My agent** is a private, persistent local conversation, separate from **Network**
+requests and general messages. Select an existing local binding, or attach a Git
+folder privately (a commit is required; attaching does not expose it). Create a chat
+and send a read-only discussion turn or explicitly allow an edit turn. Models and
+reasoning effort are chosen per turn from the same local Codex catalog.
+
+Each chat retains its own isolated worktree and transcript. The original checkout
+is untouched. Local and incoming network turns share the canonical Git repository
+queue, including aliases: one active execution per repo, different repos concurrent.
+Uncommitted local edits hold that queue for review. Inspect the diff, then commit
+locally to continue, or close the chat to release the hold and retain its worktree.
+No operation auto-merges or pushes. A closed or interrupted chat is not silently
+retried; inspect the retained worktree before starting new work. External tools that
+edit the repository are outside this queue.
+
+Use **Ask another repo…** to send an exact task brief to an exposed target. The
+agent may also propose a request; it cannot send one without your review. Only that
+brief leaves the private chat. The linked card follows the existing signed network
+request and owner approval policy, and only a verified result is included as
+untrusted context in subsequent local turns. Replies do not automatically trigger
+paid execution. Ask the local agent to continue when ready. Remote workers still
+cannot delegate onward. Private chats are not accessible through the network MCP.
+
+Persistence in this first version is application-managed: every isolated Codex
+invocation receives the saved owner/assistant conversation and verified linked
+results with fresh sandbox instructions. It does not resume or import your Codex
+desktop chat, nor keep native CLI tool-call history. Full history is retained; a
+180 KB serialized context cap fails visibly instead of silently truncating it.
+Start a new chat with a reviewed summary when that limit is reached. Live Codex
+execution and Windows behavior need on-device testing; automated tests use isolated
+repositories, a real test relay, and deterministic runner substitutes.
+
+To try: restart the companion, refresh the dashboard, open My agent, create a chat,
+ask a question and then a follow-up. Send a linked question to another exposed repo,
+wait for its verified reply, then ask your local agent to use it. Test an edit and
+review its diff before committing on the isolated branch. No backend migration is
+required for these local-chat additions.
+
 **Temporary local-development control:** Settings → Server URL lets each computer
 check and reconnect to a new tunnel origin without editing `state.json` or restarting
 the companion. Explicitly approve sending your existing credential to that URL.

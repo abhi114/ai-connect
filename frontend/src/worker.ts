@@ -7,10 +7,12 @@ import { authorize } from './policy.ts';
 import { approvedPath, git, inspectDiff, makeWorktree, verifyBinding } from './git.ts';
 import { runCodex } from './codex.ts';
 import { signOutgoing, requireVerified } from './trust.ts';
+import { LocalChats } from './local-chats.ts';
 
 export class Worker {
   store: Store; remote: Remote; active = new Map<string,AbortController>();
   runner: typeof runCodex;
+  local: LocalChats;
   private ticking = false;
   // Bindings are canonicalized by identify(). Share one lane across aliases and
   // linked worktrees of the same Git repository, not merely a relay repo ID.
@@ -23,20 +25,23 @@ export class Worker {
   }
   constructor(store: Store, remote: Remote, runner = runCodex) {
     this.store=store; this.remote=remote; this.runner=runner;
+    this.local=new LocalChats(store,this);
     for (const run of Object.values(store.state.runs)) {
+      if(run.local_chat_id&&run.state==='awaiting_review')continue;
       if (['claiming','running','awaiting_review'].includes(run.state)) {
         run.state='interrupted'; run.error='Daemon restarted. Preserved worktree; inspect it before creating a new request. No automatic execution retry.';
       }
     }
     store.save();
   }
-  async tick() {
+  async tick(remoteAllowed=true) {
     if(this.ticking)return;
     this.ticking=true;
-    try { await this.schedule(); } finally { this.ticking=false; }
+    try { await this.schedule(remoteAllowed); } finally { this.ticking=false; }
   }
-  private async schedule() {
+  private async schedule(remoteAllowed:boolean) {
     for (const run of Object.values(this.store.state.runs)) {
+      if(run.local_chat_id||!remoteAllowed)continue;
       if (run.lease_token && ['running','awaiting_review'].includes(run.state)) {
         const current=this.store.state.requests.find(r=>r.id===run.request_id);
         try {
@@ -50,9 +55,10 @@ export class Worker {
       }
       if (run.state==='delivery_pending') await this.deliverResult(run);
     }
-    const requests=[...this.store.state.requests] as RepoRequest[];
-    requests.sort((a,b)=>a.created_at-b.created_at || a.id.localeCompare(b.id));
-    for (const request of requests) {
+    const requests=[...(remoteAllowed?this.store.state.requests:[]).map(request=>({request,id:request.id,created_at:request.created_at})),...this.local.candidates()].sort((a,b)=>a.created_at-b.created_at||a.id.localeCompare(b.id));
+    for (const candidate of requests) {
+      if('chat' in candidate){const {chat,turn}=candidate;const lane=this.lane(chat.repo_id);if(Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane&&(this.active.has(r.request_id)||['claiming','running','awaiting_review','delivery_pending'].includes(r.state))))continue;const run=this.store.state.runs[turn.id];run.state='claiming';this.store.save();void this.local.execute(chat,turn,run);continue;}
+      const request=candidate.request as RepoRequest;
       if (request.status!=='queued' || this.store.state.runs[request.id]) continue;
       let binding; try { binding=authorize(this.store.state,request); } catch { continue; }
       const lane=this.lane(binding.repo_id);

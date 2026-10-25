@@ -32,6 +32,7 @@ alice.worker.runner=async(request,worktree)=>{
 };
 alice.modelLoader=async()=>({fetched_at:Date.now(),models:[{model:'qa-fast',name:'QA Fast (fixture)',efforts:['low','medium'],isDefault:true,defaultEffort:'low'},{model:'qa-deep',name:'QA Deep (fixture)',efforts:['medium','high'],isDefault:false,defaultEffort:'medium'}]});
 alice.folderPicker=async()=>({path:repo});
+alice.worker.local.runner=async(input,worktree,_signal,_execution,change)=>{if(change)await writeFile(join(worktree,'README.md'),'# Demo shop\nUpdated in a private local conversation.\n');return {answer:'The local project uses integer cents. I can use a linked backend schema reply in the next turn. This is a test response, not a live model.',delegations:[]};};
 await alice.dispatch('enroll',{name:'AIConnect UI Test Network',handle:'alice',server});
 for(const core of [bob,carol])await core.dispatch('enroll',{code:(await alice.dispatch('invite')).code,handle:core===bob?'bob':'carol',server});
 const {repo:published}=await alice.dispatch('expose',{path:repo,name:'demo-shop',description:'Shopping-cart calculations and discounts',questions:'ask',changes:true});
@@ -45,6 +46,9 @@ for(let i=0;i<100&&alice.store.state.runs[question.id]?.state!=='complete';i++)a
 await bob.dispatch('request_change',{repo_id:published.id,body:'Add a SAVE10 discount code with tests and update the README.'});
 await carol.dispatch('ask_repo',{repo_id:published.id,body:'Which input validation rules keep invalid quantities out of the cart?'});
 await alice.sync();
+const {chat:localChat}=await alice.dispatch('local_create',{repo_id:published.id,title:'Checkout integration'});
+const {turn:localTurn}=await alice.dispatch('local_send',{chat_id:localChat.id,body:'Explain the checkout flow before we ask the backend team.',kind:'question'});
+for(let i=0;i<100&&alice.store.state.runs[localTurn.id]?.state!=='complete';i++)await new Promise(resolve=>setTimeout(resolve,30));
 const timer=setInterval(()=>{void bob.sync();void carol.sync()},10000);
 console.log(JSON.stringify({preview_url:daemon.url,guest_url:guest.url,fixture_directory:dir}));
 for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{clearInterval(timer);bob.worker.stop();carol.worker.stop();void Promise.all([daemon.stop(),guest.stop()]).then(()=>relay.close()).then(()=>process.exit(0));});

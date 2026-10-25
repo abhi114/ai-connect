@@ -3,7 +3,8 @@ export function homeModel(snapshot:any,messages:any[]=[],now=Date.now()) {
   const me=snapshot.member?.id;
   const groups:any={approvals:[],reviews:[],working:[],queued:[],waiting:[],today:[],issues:[]};
   const day=new Date(now).toDateString();
-  const requests=[...snapshot.requests].sort((a,b)=>a.created_at-b.created_at);
+  const local=(snapshot.local_chats||[]).flatMap((c:any)=>c.turns.map((t:any)=>({id:t.id,local_chat_id:c.id,repo_id:c.repo_id,owner_member_id:me,sender_member_id:me,kind:t.kind,body:t.body,title:t.body.slice(0,100),status:snapshot.runs[t.id]?.state||'queued',created_at:t.created_at,updated_at:t.created_at})));
+  const requests=[...snapshot.requests,...local].sort((a,b)=>a.created_at-b.created_at);
   for(const request of requests){
     const run=snapshot.runs[request.id];
     const state=run&&run.state!=='complete'?run.state:request.status;
