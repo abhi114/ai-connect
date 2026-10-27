@@ -371,3 +371,13 @@ metadata retention. No claim of production security certification or measured
 
 Keep this document updated when the hostname, runtime, service paths, backup
 policy or deployment method changes. Keep secrets in private state, never here.
+
+## 9. Update on 28 October 2026 (IST)
+
+Deployed application commit `5397606` to `/opt/aiconnect/releases/20261028-request-controls` and switched `/opt/aiconnect/current` to it. The release contains backend source, package metadata, shared protocol code, and the VPS backup scripts. The original release remains available for rollback. HTTPS hostname, ports, Node version, service account, and database path are unchanged.
+
+This adds manual retry of failed requests: either participant may request a retry, but execution always returns to owner approval. The request and signed content remain the same; a new worker claim invalidates the previous lease token. No database schema migration was required. Client-side model/effort/owner-note controls and fresh retry worktrees require updated clients.
+
+The existing SQLite backup service completed before deployment and again using the new release after deployment. During the maintenance window, quick_check returned `ok`; counts were 2 networks, 4 members, 4 devices, 2 repositories, 9 requests and 7 results. Live database files were not replaced. Public HTTPS and loopback readiness passed, backend/Caddy were active, and server source hashes matched the committed code. The current Mac profile authenticated with unchanged membership and all cached request IDs still present.
+
+Built Apple Silicon and Intel installers from the same application commit under `frontend/dist/macos-arm64-1793131573633/` and `frontend/dist/macos-x64-1793131573633/`. Both DMGs and app signatures verified; the Apple Silicon package passed isolated first-run startup and dashboard-authentication checks. These are ad-hoc development builds, not notarized releases. Installers remain local and Git-ignored; they were not uploaded to GitHub. End-to-end model execution and native approval interaction remain manual two-device tests.
