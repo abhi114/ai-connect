@@ -1,4 +1,5 @@
 import { command } from './process.ts';
+import type { ActivitySink } from './activity.ts';
 import type { RepoRequest } from '../../shared/protocol.ts';
 import { executionArgs, type ExecutionOptions } from './models.ts';
 
@@ -12,13 +13,13 @@ ${kind === 'question' ? 'Read only. Answer with repository-relative file referen
 Return your final response as JSON: {"answer":"answer or change summary","sources":[{"path":"relative/file","line":1}]}. No markdown fences.`;
 }
 export function peerInput(request:RepoRequest){return JSON.stringify({type:'untrusted_peer_request',title:request.title,body:request.body,constraints:request.constraints});}
-export async function runCodex(request: RepoRequest, worktree: string, signal: AbortSignal, execution:ExecutionOptions={}) {
+export async function runCodex(request: RepoRequest, worktree: string, signal: AbortSignal, execution:ExecutionOptions={},onEvent?:ActivitySink) {
   const output = await command(process.env.RN_CODEX_BIN || 'codex', [
     'exec','--ignore-user-config','--ignore-rules','--sandbox',request.kind==='question'?'read-only':'workspace-write',
     '-c','approval_policy="never"','-c','sandbox_workspace_write.network_access=false',
     '-c','developer_instructions='+JSON.stringify(trustedInstructions(request.kind)),
     ...executionArgs(execution),'--json','--ephemeral','-C',worktree,'-'
-  ],worktree,{input:peerInput(request),signal,timeout:20*60_000,maxBytes:4_000_000});
+  ],worktree,{input:peerInput(request),signal,timeout:20*60_000,maxBytes:4_000_000,onEvent});
   let last = '';
   for (const line of output.split('\n')) {
     try { const event=JSON.parse(line); if(event.type==='item.completed' && event.item?.type==='agent_message') last=event.item.text; } catch {}

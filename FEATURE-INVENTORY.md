@@ -10,6 +10,20 @@ It is **not** a Git hosting service, remote shell, shared Codex Desktop transcri
 
 ## 2. Implemented capabilities
 
+### Interactive chat additions (working tree after the baseline)
+
+- Expandable local work activity: public assistant updates, command state/exit code,
+  file-change counts, elapsed run time; no private reasoning or raw tool output.
+- Contextual local next-step suggestions fill a draft; they never auto-execute.
+- Explicit searchable owner/repository selection with match counts in delegation.
+- Changed-file list and per-file colored diff, branch/worktree context and Finder/
+  Explorer folder reveal. Owner-only; no remote filesystem access or file execution.
+- Activity is captured incrementally but displayed through existing five-second
+  polling, not token-by-token response streaming. Historical logs are not fabricated.
+
+Tests for the additions use temporary repositories and mock model activity; native
+Windows folder reveal and live Codex event compatibility still need on-device checks.
+
 | Area | Current behavior | Important boundary |
 | --- | --- | --- |
 | Network creation/join | Create network; join with one-use expiring invite; unique handles; member/admin roles | One enrolled network per profile; not a multi-account workspace switcher |
@@ -109,3 +123,15 @@ The user previously demonstrated Mac/Windows remote question/change flows and re
 ## 7. Maintenance rule
 
 For each change update its status here, architecture implications, tests actually run, and any migration/restart requirements. “Implemented”, “tested with mocks”, “tested live”, and “proposed” must remain separate claims. Do not convert a user suggestion into a shipped capability without evidence.
+
+## Routines — implemented, mock-tested (2026-10-26)
+
+Sidebar management supports create/edit/pause/resume/remove/run now, local project selection, hourly/daily/weekdays/weekly schedules, named timezone, model/reasoning and explicit quota consent. Fresh read-only local chats share the existing repo queue. History links open run chats. A running/queued prior routine prevents overlap. Catch-up is limited to one occurrence within 12 hours; older missed occurrences are skipped. Companion must run on an awake computer. No scheduled edits, peer messaging, OS wake or cloud scheduler. History is bounded to 30; worktree retention is unchanged. Automated tests cover scheduling/DST, persistence, consent, catch-up, overlap and UI structure; live Codex and native Windows execution remain unverified for this feature.
+
+## macOS notification utility (2026-10-26)
+
+Implemented: native Swift menu bar, authenticated loopback polling, request/approval count, request state notifications, explicit default-model approval confirmation, reject/cancel confirmation, dashboard shortcut and notification opt-in/mute. Auto questions still notify. Existing trust/queue/worktree checks remain. Build/install via `menubar build|install`; ad-hoc signed development bundle, not notarized distribution. Compile/tests pass; native banner/action-click manual QA remains. Windows, local/routine alerts, deep links, launch-at-login automation and inline text input are deferred. See frontend/MAC-NOTIFICATIONS.md.
+
+## VPS testing deployment (27 October 2026)
+
+Live backend: `https://aiconnect.162-35-104-181.sslip.io`. Ubuntu VPS, Node 24.22.1, Caddy public HTTPS, unprivileged systemd relay, restrictive data permissions, UFW, daily SQLite snapshot timer. Existing database migrated and membership/device/signing-key/request continuity verified. Client URL cutover remains manual; local workers/dashboard are still required. Same-server backups are not disaster recovery; off-server recurring backups, owned domain and production hardening remain follow-ups. See backend/deploy/vps/README.md.

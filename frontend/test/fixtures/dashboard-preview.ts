@@ -32,7 +32,16 @@ alice.worker.runner=async(request,worktree)=>{
 };
 alice.modelLoader=async()=>({fetched_at:Date.now(),models:[{model:'qa-fast',name:'QA Fast (fixture)',efforts:['low','medium'],isDefault:true,defaultEffort:'low'},{model:'qa-deep',name:'QA Deep (fixture)',efforts:['medium','high'],isDefault:false,defaultEffort:'medium'}]});
 alice.folderPicker=async()=>({path:repo});
-alice.worker.local.runner=async(input,worktree,_signal,_execution,change)=>{if(change)await writeFile(join(worktree,'README.md'),'# Demo shop\nUpdated in a private local conversation.\n');return {answer:'The local project uses integer cents. I can use a linked backend schema reply in the next turn. This is a test response, not a live model.',delegations:[]};};
+alice.worker.local.runner=async(input,worktree,_signal,_execution,change,onEvent)=>{
+  onEvent?.({type:'turn.started'});
+  onEvent?.({type:'item.completed',item:{id:'note',type:'agent_message',text:'I will inspect the checkout files and summarize what needs verification. (Simulated QA activity.)'}});
+  onEvent?.({type:'item.started',item:{id:'command',type:'command_execution'}});
+  await new Promise(r=>setTimeout(r,150));
+  onEvent?.({type:'item.completed',item:{id:'command',type:'command_execution',exit_code:0}});
+  if(change){await writeFile(join(worktree,'README.md'),'# Demo shop\nUpdated in a private local conversation.\n');onEvent?.({type:'item.completed',item:{id:'files',type:'file_change',changes:[{path:'README.md'}]}});}
+  onEvent?.({type:'turn.completed'});
+  return {answer:'The local project uses integer cents. I can use a linked backend schema reply in the next turn. This is a test response, not a live model.',delegations:[],next_steps:[{label:'Check rounding cases',prompt:'Explain which rounding edge cases we should verify.'},{label:'Plan API integration',prompt:'Suggest how to integrate a verified backend schema, without editing yet.'}]};
+};
 await alice.dispatch('enroll',{name:'AIConnect UI Test Network',handle:'alice',server});
 for(const core of [bob,carol])await core.dispatch('enroll',{code:(await alice.dispatch('invite')).code,handle:core===bob?'bob':'carol',server});
 const {repo:published}=await alice.dispatch('expose',{path:repo,name:'demo-shop',description:'Shopping-cart calculations and discounts',questions:'ask',changes:true});

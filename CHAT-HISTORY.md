@@ -271,3 +271,35 @@ User then asked whether per-project/per-person chats could combine local work, c
 **Verified before these documents:** fetched GitHub; local HEAD and `origin/main` matched `6c0613845eb1dcc571e3b9320ac7d80601cc137e`; working tree clean, no non-ignored untracked files.
 
 Current request asks for three detailed handoff files. **Outcome:** this log, the feature inventory, and the architecture guide. Documentation creation itself does not authorize a new commit/push. Update the baseline and verification notes when later behavior changes.
+
+## 12. Interactive chat and file review
+
+User supplied four Pantheon screenshots and requested actual Desk inspection,
+visible work progress, likely next actions, recipient discovery, and clickable
+changed-file/project review (long image-led request summarized).
+
+**Inspected:** existing Pantheon Desk conversation, public progress-note disclosure,
+work-step count, suggested replies, and working-on sidebar; no messages sent or
+tasks launched in Pantheon. The source project now resides at
+`Desktop/projects/frontend-backend`, with the same AIConnect Git remote.
+
+**Implemented in the working tree:** incremental supported Codex event capture,
+local expandable activity, contextual draft suggestions, searchable exact recipient
+selection, per-file diff view and safe local folder reveal. Raw reasoning is not
+displayed; progress is public output/observed events, not a claim to expose private
+thoughts. Ambiguous names aren't auto-selected. Approvals, signatures and shared
+repository queues remain in force. No automatic sending/merging/committing was added.
+
+## Routines request (2026-10-26)
+
+User: “also do implement the routine feature in our version of the application see the code check how it works and implement the process of the routines setting and working see add a new section of the side bar and implement it there”
+
+Implementation: inspected Pantheon Desk’s installed routines module for its scheduling pattern, then built independent AIConnect routines using persisted local schedules, fresh private chats, the existing repository queue, bounded catch-up and overlap prevention. Added a sidebar panel, templates, editor, timezone/model/reasoning controls, pause/resume/run now and linked history. Initial scope is explicitly read-only with account/quota consent; automatic edits and teammate messages are not enabled. No production routine was created. Tests use fake clocks and mock workers; real Codex scheduling and Windows execution still need user testing.
+
+## macOS menu-bar notifications (2026-10-26)
+
+User clarified: “for now focus on mac”. Requested Pantheon-inspired notifications, approvals/rejection/cancellation and dashboard access from a menu-bar utility. Inspected installed Pantheon Swift menu-bar and web alert source for the interaction pattern. Implemented an independent small native Swift helper and local-only authenticated notification RPCs. Explicit confirmation and current state/trust checks protect actions. Auto-mode request updates still notify. Model selection/diffs/input stay in the dashboard. TypeScript/native build and automated checks passed; the mock helper launched but native UI inspection timed out, so banner and button behavior remain a manual verification step. No real approvals, notification permission changes or login-item setup were performed.
+
+## VPS key access and migration (27 October 2026)
+
+User supplied successful SSH-key login output for root@162.35.104.181 after previously authorizing backend deployment and migration of the existing database. Connected using the dedicated local SSH key without obtaining a password. Inspected fresh Ubuntu server; installed verified Node 24 and official Caddy; deployed the relay with persistent SQLite, systemd and firewall. Used free IP-based DNS because the user has no domain. Migrated a consistent database snapshot and verified membership/device/signing-key continuity plus all seven existing request IDs through authenticated HTTPS. Added daily local snapshots and operations documentation. Original Mac database retained; no client URLs changed automatically and no Git commit/push performed. Endpoint is live; client cutover and cross-device functional test remain user steps.

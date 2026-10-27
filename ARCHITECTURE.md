@@ -213,6 +213,28 @@ Optional launchd user service would own companion lifecycle/start-at-login. Inte
 
 ## 12. Validation and handoff checklist
 
+### Interactive chat implementation added after the baseline
+
+`process.ts` incrementally decodes stdout JSONL using UTF-8-safe buffering and an
+optional event sink. `activity.ts` projects supported public events into capped
+local run activity; it discards reasoning, raw command text/output and tool payloads.
+Both local and network runners use this sink. The relay/result signature contract
+is unchanged: activity stays in local runs, not signed remote results. Public notes
+are untrusted model prose; pattern redaction is defense in depth, not secret-proofing.
+
+`chat-interactions.ts` renders expandable activity, draft-only next actions and the
+workspace review dialog. `local-codex.ts` optionally returns validated `next_steps`
+alongside the answer/delegation proposals. Suggestions confer no authorization.
+
+`workspace-review.ts` validates a run's managed local worktree and canonical Git
+identity, enumerates scoped changes, and disables Git external diff/textconv for
+previews. File selection uses literal pathspecs, not shell interpolation. Folder
+reveal rejects traversal/protected paths/symlinks and opens only a directory using
+argument-array process calls. The `diff` RPC now returns file/context metadata in
+addition to its compatible `diff` field; `workspace_reveal` is local RPC only, not
+an MCP tool. A comparison is against the recorded turn base and current worktree,
+not an immutable historical per-turn file snapshot. Later edits can appear in it.
+
 At baseline frontend tests: 65 pass, one live-Codex test skipped. Type-check passed. Coverage includes real temporary relay/Git flows, signing/tampering/trust, queue aliases/concurrency, approval, transport retries, model catalog substitutes, lifecycle, local persistence/review and linked context. UI preview uses mock agents. Historical user-confirmed remote Mac/Windows operation does not certify latest local-runner behavior.
 
 Before changing a subsystem:
@@ -227,3 +249,17 @@ Before changing a subsystem:
 8. Update these three handoff files when product behavior or decisions change.
 
 Open follow-ups include installer/updater, native Windows lifecycle CI, retention, credential recovery/storage, E2EE, stable hosting and deletion of temporary URL-switch UI. See [FEATURE-INVENTORY.md](FEATURE-INVENTORY.md) for status and [frontend/IMPROVEMENTS.md](frontend/IMPROVEMENTS.md) for concrete removal targets.
+
+## Local routine scheduling
+
+`frontend/src/routines.ts` owns validated schedules and persisted `State.routines`; `routines-dashboard.ts` supplies the sidebar panel/editor. Local authenticated RPC exposes list/save/toggle/remove/run; these controls are not exposed through MCP or the relay. Core sync ticks the scheduler even without network enrollment, then dispatches through the existing local worker queue. Save validates configured model/effort; later account availability changes can fail execution and appear in the linked chat.
+
+The scheduler advances and saves next_at before enqueueing a fresh read-only LocalChat turn. This favors no duplicate scheduled execution over automatic replay after crashes. Reservations and failures are recorded; manual Run now is available after inspection. Active-turn tracking plus recovery from saved chat turns prevents overlap after an interrupted pointer save. UTC-minute scanning uses Intl named timezones; nonexistent DST times are skipped and daily advancement avoids the ordinary repeated-hour duplicate. First missed due occurrence older than 12 hours is skipped. State is local per profile, not relay-synced. History stores up to 30 entries, while chats/worktrees remain retained. Pausing/deleting schedules does not cancel work already queued. No new edit authority or outbound-message authority is granted.
+
+## Native macOS notification client (2026-10-26)
+
+`frontend/native/macos/main.swift` implements an AppKit accessory app with NSStatusItem and UserNotifications categories. `mac-menubar.ts` compiles it and generates a per-profile bundle identifier/Info.plist; `cli.ts` exposes menubar build/install. It reads the local dashboard endpoint/session token and polls `notification_status` every four seconds. The compact participant-only projection in `notifications.ts` excludes full bodies, paths and keys. The helper fetches full request content only for an action confirmation; `notification_action` revalidates availability and delegates to existing approve/reject/cancel logic. Approval uses explicit empty execution options (Codex defaults) and existing signature checks. Bounded notification fingerprints persist in per-profile macOS preferences, baseline old history, and coalesce state changes. No relay or MCP protocol changes. See frontend/MAC-NOTIFICATIONS.md for deployment and manual QA limitations.
+
+## Hosted testing relay (27 October 2026)
+
+The relay now runs on VPS 162.35.104.181 behind Caddy at `https://aiconnect.162-35-104-181.sslip.io`; Node listens only on 127.0.0.1:8787. Systemd executes as a dedicated unprivileged user, code is versioned under /opt/aiconnect and persistent SQLite is under /var/lib/aiconnect. Daily consistent snapshots are under /var/backups/aiconnect. Only SSH and HTTP/HTTPS are allowed inbound. TLS terminates at Caddy; sslip.io supplies temporary third-party DNS. This changes deployment, not application authorization or local execution. Membership/history migration was checksum/integrity/auth verified. No E2EE or production signup hardening was added. See backend/deploy/vps/README.md for cutover, recovery and verification limits.

@@ -1,0 +1,14 @@
+[Unit]
+Description=Consistent AIConnect SQLite snapshot
+
+[Service]
+Type=oneshot
+User=aiconnect
+Group=aiconnect
+UMask=0077
+ExecStart=/usr/local/bin/node /opt/aiconnect/current/backend/deploy/vps/backup.ts
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/aiconnect /var/backups/aiconnect

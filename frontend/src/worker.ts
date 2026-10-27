@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { recordActivity } from './activity.ts';
 import { resolve } from 'node:path';
 import type { RepoRequest } from '../../shared/protocol.ts';
 import type { Store, Run } from './store.ts';
@@ -83,7 +84,7 @@ export class Worker {
       await this.remote.mutate(`/v1/requests/${request.id}/heartbeat`,{lease_token:run.lease_token});
       Object.assign(run,await makeWorktree(binding,this.store.dir,request.id,request.kind==='change')); this.store.save();
       const mainBefore=await git(binding.path,'status','--porcelain=v1');
-      const response=await this.runner(request,run.worktree!,controller.signal,run.execution);
+      const response=await this.runner(request,run.worktree!,controller.signal,run.execution,recordActivity(this.store,run));
       if (run.state!=='running' || controller.signal.aborted) throw new Error('Run cancelled or lease lost');
       if (await git(binding.path,'status','--porcelain=v1')!==mainBefore) throw new Error('Main checkout changed while task ran; held for owner review');
       run.answer=response.answer;
@@ -105,7 +106,7 @@ export class Worker {
       if(run.lease_token) {
         try { await this.remote.mutate(`/v1/requests/${request.id}/fail`,{lease_token:run.lease_token,code:'local_execution_failed',message:'Local execution failed or was held for owner inspection; see owner dashboard.'}); } catch {}
       }
-    } finally { this.active.delete(request.id); }
+    } finally { run.finished_at=Date.now();this.store.save();this.active.delete(request.id); }
   }
   async deliver(id:string) {
     const run=this.store.state.runs[id];

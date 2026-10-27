@@ -7,6 +7,7 @@ import { startDaemon } from './daemon.ts';
 import { ensureService, stopService } from './service.ts';
 import { setup, checkMcp } from './setup.ts';
 import { banner, connectionLabel } from './brand.ts';
+import { installMenubar } from './mac-menubar.ts';
 
 const help=`AIConnect — local companion (Node 24+, Git, authenticated Codex CLI)
 
@@ -19,6 +20,7 @@ npm run cli -- join <code> --handle <handle> [--server URL]
 npm run cli -- invite
 npm run cli -- status|members|inbox|doctor|dashboard
 npm run cli -- models
+npm run cli -- menubar install|build
 npm run cli -- trust list
 npm run cli -- trust block <device-id>
 npm run cli -- trust confirm <device-id> --fingerprint <sha256> --confirmed true
@@ -40,6 +42,7 @@ export async function main(argv=process.argv.slice(2)) {
   const {positional:p,options:o}=parse(argv); const [verb,action,...rest]=p;
   if(!verb||verb==='help'||verb==='setup'||verb==='connect'||(verb==='service'&&['run','start'].includes(action)))banner();
   if(!verb||verb==='help'||o.help){console.log(help);return}
+  if(verb==='menubar'){if(!['install','build'].includes(action))throw Error('Use menubar install or build');if(action==='install')await ensureService();console.log(await installMenubar(action==='install'));return}
   if(verb==='connect'){const status=await ensureService();console.error(connectionLabel(status));return}
   if(verb==='setup'){console.log(JSON.stringify(await setup(o),null,2));return}
   if(verb==='codex'&&action==='check'){console.log(JSON.stringify(await checkMcp(),null,2));return}

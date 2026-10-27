@@ -1,0 +1,29 @@
+[Unit]
+Description=AIConnect relay
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=aiconnect
+Group=aiconnect
+WorkingDirectory=/opt/aiconnect/current/backend
+Environment=NODE_ENV=production
+Environment=HOST=127.0.0.1
+Environment=PORT=8787
+Environment=DATABASE_PATH=/var/lib/aiconnect/pantheon.sqlite
+ExecStart=/usr/local/bin/node /opt/aiconnect/current/backend/src/main.ts
+Restart=on-failure
+RestartSec=3
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/aiconnect
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

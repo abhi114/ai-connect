@@ -11,6 +11,28 @@ for the upgrade sequence, fingerprints, legacy-history handling and limitations.
 
 ### Dashboard views
 
+**Interactive work review:** My agent and locally executed network request details
+now show expandable work activity from Codex JSONL events. Public assistant updates,
+command lifecycle/exit codes and file-change counts are supported. Reasoning items,
+raw commands, tool payloads and command outputs are not retained in that log. It is
+local-only, capped at 100 items per run, and refreshed by the dashboard's existing
+polling; old runs can have no activity. Notes are model output, not trusted policy,
+and best-effort redaction is not a guarantee that all sensitive prose is removed.
+
+Local answers may offer up to three contextual next-step buttons. They populate a
+read-only draft, not an execution; review and Send remain necessary. Recipient
+search in **Ask another repo…** displays matching owner/repository pairs and requires
+an explicit selection. It does not guess a recipient or send to the closest name.
+
+**Changed files & diff** opens a per-file review with colored additions/deletions,
+the isolated branch/path, and Open worktree / Reveal file folder controls. Reveal
+opens a folder in Finder/Explorer, never executes a changed file. Paths are checked
+against the local managed worktree and allowed scope; symlink reveal is refused.
+This is an owner-computer view, not a mechanism for accessing a peer's filesystem.
+Untracked files are listed but their content isn't previewed until staged by normal
+review checks. Old turns show the current worktree against that turn's base, which
+can include later changes. Neither preview nor folder reveal commits or sends work.
+
 **My agent** is a private, persistent local conversation, separate from **Network**
 requests and general messages. Select an existing local binding, or attach a Git
 folder privately (a commit is required; attaching does not expose it). Create a chat
@@ -402,3 +424,15 @@ answers awaiting owner review are labeled as not delivered. Delivered changes
 include the AI summary, branch location and test status. Members online are
 network presence, not direct socket connections. Only request messages and final
 AI responses are recorded here; it is not a live token stream or terminal log.
+
+## Routines (local scheduled reviews)
+
+Open **Routines** in the sidebar. Start from a template or create a routine, choose a locally attached project, prompt, schedule, timezone, model and reasoning effort. Explicitly authorize account/quota use and enable it when ready. Run now also works for paused routines.
+
+Each run starts a fresh private **My agent** chat in read-only mode through the shared repository queue. There are no automatic edits, commits, peer messages or approval bypasses. Runs require the computer awake and companion running; the browser can be closed. One missed occurrence up to 12 hours late is caught up; older occurrences are skipped, not replayed. Existing queued/active work prevents another run of that routine.
+
+Schedules persist in the local profile only. Pause/remove stops future scheduling, not already queued work. Run history keeps 30 entries; chats/worktrees are retained separately and consume disk space. No OS wake, cloud scheduling, automatic cleanup or cross-device schedule sync is included. Restart the companion after updating, then refresh the dashboard; no relay restart is needed.
+
+## macOS menu bar and request notifications
+
+Run `npm run cli -- menubar install` after restarting the updated companion. This development command builds a small native Swift app (Apple Command Line Tools required) and opens it. Enable notifications explicitly from its **AI◈** menu. It offers default-model approval confirmation, reject/cancel where applicable and dashboard access; existing trust and queue rules remain. The browser can be closed. See [MAC-NOTIFICATIONS.md](MAC-NOTIFICATIONS.md) for setup, limitations and the manual test checklist. Windows is unchanged.

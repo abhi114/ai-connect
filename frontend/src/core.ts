@@ -11,6 +11,9 @@ import { CodexIntegration } from './integration.ts';
 import { verifyRequest, verification, verifyMessage, requireVerified, trustView, changeTrust } from './trust.ts';
 import { resultPayload } from '../../shared/signing.ts';
 import { serverOrigin, checkServer } from './server-switch.ts';
+import { workspaceReview,revealWorkspace } from './workspace-review.ts';
+import { Routines } from './routines.ts';
+import { notificationView } from './notifications.ts';
 
 export class Core {
   changingServer=false; private activeDispatches=0;
@@ -23,9 +26,11 @@ export class Core {
     return this.modelDiscovery;
   }
   store:Store; remote:Remote; worker:Worker; syncing=false; connected=false; stopping=false;
-  constructor(store:Store) { this.store=store; this.remote=new Remote(store); this.worker=new Worker(store,this.remote);this.integration=new CodexIntegration(store.dir); }
+  routines:Routines;
+  constructor(store:Store) { this.store=store; this.remote=new Remote(store); this.worker=new Worker(store,this.remote);this.routines=new Routines(store,this.worker.local);this.integration=new CodexIntegration(store.dir); }
   async sync() {
     if(this.stopping || this.changingServer || this.syncing) return;
+    this.routines.tick();
     if(!this.store.state.token){await this.worker.tick(false);return;}
     this.syncing=true;
     try {
@@ -73,9 +78,22 @@ export class Core {
     await this.sync();
     return {server:this.store.state.server,connected:this.connected,error:this.store.state.connection_error};
   }
-  private async dispatchInner(method:string,args:any={}) {
+  private async dispatchInner(method:string,args:any={}):Promise<any> {
     const state=this.store.state;
     switch(method) {
+      case 'notification_status': return notificationView(state,this.connected);
+      case 'notification_action': {
+        if(args.confirmed!==true||!['approve','reject','cancel'].includes(args.action))throw Error('Confirm a supported notification action');
+        await this.sync();
+        const row=notificationView(state,this.connected).rows.find(r=>r.id===args.request_id);
+        if(!row?.actions.includes(args.action))throw Error('Request changed or action is unavailable. Review it in the dashboard.');
+        return this.dispatchInner(args.action,{request_id:args.request_id,execution:{}});
+      }
+      case 'routine_list': return {routines:this.routines.view()};
+      case 'routine_save': {const execution=validateExecution(args.execution,args.execution?.model?await this.models(true):undefined);return {routine:this.routines.save(args,execution)};}
+      case 'routine_toggle': return {routine:this.routines.toggle(args.id,args.enabled,args.confirmed===true)};
+      case 'routine_remove': {if(args.confirmed!==true)throw Error('Confirm removing this schedule; chats remain');return this.routines.remove(args.id);}
+      case 'routine_run': {if(args.confirmed!==true)throw Error('Confirm running this routine now');const result=this.routines.run(args.id);await this.worker.tick(this.connected);return result;}
       case 'local_attach': return {binding:await this.worker.local.attach(String(args.path||''),String(args.name||''))};
       case 'local_chats': return {chats:this.worker.local.view()};
       case 'local_create': return {chat:this.worker.local.create(args.repo_id,String(args.title||''))};
@@ -202,9 +220,9 @@ export class Core {
       case 'deliver': return this.worker.deliver(args.request_id);
       case 'accept': case 'close': return this.remote.durable(`/v1/requests/${encodeURIComponent(args.request_id)}/${method}`,{});
       case 'diff': {
-        const run=state.runs[args.request_id]; if(!run?.worktree) throw new Error('No local worktree');
-        return {diff:await git(run.worktree,'diff',run.base_commit!)};
+        return workspaceReview(this.store,args.request_id,args.path);
       }
+      case 'workspace_reveal': return revealWorkspace(this.store,args.request_id,args.path);
       case 'doctor': {
         const checks:any={node:process.version,server:state.server,connected:this.connected,credential_storage:'0600 file (Windows inherits profile directory ACL)',windows_tested:false};
         for(const executable of ['git',process.env.RN_CODEX_BIN||'codex']) try { checks[executable]=await command(executable,['--version'],this.store.dir); } catch(error) { checks[executable]=String(error); }

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { recordActivity } from './activity.ts';
 import { isAbsolute,basename } from 'node:path';
 import type { Store,Run } from './store.ts';
 import type { Worker } from './worker.ts';
@@ -8,7 +9,7 @@ import { runLocalCodex,type LocalResponse } from './local-codex.ts';
 import { verification,verifyRequest,signOutgoing } from './trust.ts';
 import { resultPayload } from '../../shared/signing.ts';
 
-export interface LocalTurn {id:string;body:string;kind:'question'|'change';created_at:number;execution:ExecutionOptions;answer?:string;delegations?:LocalResponse['delegations']}
+export interface LocalTurn {id:string;body:string;kind:'question'|'change';created_at:number;execution:ExecutionOptions;answer?:string;delegations?:LocalResponse['delegations'];next_steps?:LocalResponse['next_steps']}
 export interface LocalLink {id:string;repo_id:string;kind:'question'|'change';body:string;created_at:number;error?:string;data?:any}
 export interface LocalChat {id:string;repo_id:string;title:string;created_at:number;turns:LocalTurn[];links:LocalLink[];worktree?:string;branch?:string;base_commit?:string;head?:string;archived?:boolean}
 export class LocalChats {
@@ -40,16 +41,16 @@ export class LocalChats {
     try{const b=await this.checkWorktree(c);if(!c.worktree){Object.assign(c,await makeWorktree(b,this.store.dir,c.id,true));c.worktree=(await identify(c.worktree!)).path;c.head=c.base_commit;this.store.save();}
       if(await git(c.worktree!,'status','--porcelain=v1'))throw Error('Chat worktree has unreviewed or external edits');
       const mainBefore=await git(b.path,'status','--porcelain=v1');Object.assign(run,{worktree:c.worktree,branch:c.branch,base_commit:c.head,state:'running'});this.store.save();
-      const response=await this.runner(this.input(c,t),c.worktree!,controller.signal,t.execution,t.kind==='change');
+      const response=await this.runner(this.input(c,t),c.worktree!,controller.signal,t.execution,t.kind==='change',recordActivity(this.store,run));
       if(controller.signal.aborted||run.state!=='running')throw Error('Local turn interrupted; inspect retained worktree');
       await this.checkWorktree(c);if(await git(b.path,'status','--porcelain=v1')!==mainBefore)throw Error('Main checkout changed during the turn');
-      t.answer=response.answer;t.delegations=response.delegations;run.answer=response.answer;
+      t.answer=response.answer;t.delegations=response.delegations;t.next_steps=response.next_steps;run.answer=response.answer;
       const dirty=await git(c.worktree!,'status','--porcelain=v1');
       if(t.kind==='question'&&dirty)throw Error('Read-only turn changed worktree; inspect it');
       if(dirty){const diff=await inspectDiff(b,c.worktree!,c.head!);run.diff_summary=diff.summary;run.state='awaiting_review';}
       else run.state='complete';this.store.save();
     }catch(e){run.state='interrupted';run.error=e instanceof Error?e.message:String(e);this.store.save();}
-    finally{this.worker.active.delete(t.id);}
+    finally{run.finished_at=Date.now();this.store.save();this.worker.active.delete(t.id);}
   }
   async review(id:string){
     const run=this.store.state.runs[id];if(!run?.local_chat_id||run.state!=='awaiting_review'||this.worker.active.has(id))throw Error('No local change awaiting review');
