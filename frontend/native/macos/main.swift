@@ -10,7 +10,7 @@ struct Row: Codable {
 }
 struct Snapshot: Codable { let connected: Bool; let handle: String; let pending: Int; let rows: [Row] }
 final class MenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, NSMenuDelegate {
-    let profile = Bundle.main.object(forInfoDictionaryKey: "AIConnectProfile") as? String ?? ""
+    let profile = Bundle.main.object(forInfoDictionaryKey: "AIConnectProfile") as? String ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".repo-network").path
     var item: NSStatusItem!
     var snapshot: Snapshot?
     var loading = false, menuOpen = false

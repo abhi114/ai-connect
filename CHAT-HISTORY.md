@@ -303,3 +303,14 @@ User clarified: “for now focus on mac”. Requested Pantheon-inspired notifica
 ## VPS key access and migration (27 October 2026)
 
 User supplied successful SSH-key login output for root@162.35.104.181 after previously authorizing backend deployment and migration of the existing database. Connected using the dedicated local SSH key without obtaining a password. Inspected fresh Ubuntu server; installed verified Node 24 and official Caddy; deployed the relay with persistent SQLite, systemd and firewall. Used free IP-based DNS because the user has no domain. Migrated a consistent database snapshot and verified membership/device/signing-key continuity plus all seven existing request IDs through authenticated HTTPS. Added daily local snapshots and operations documentation. Original Mac database retained; no client URLs changed automatically and no Git commit/push performed. Endpoint is live; client cutover and cross-device functional test remain user steps.
+# macOS standalone setup (27 October 2026)
+
+User requested a shareable standalone interactive installation with minimal terminal
+work, clarified “only for macos”, “keep it on the same folder only”, then “do it”.
+Implemented in the same repository under frontend: native Swift shell, embedded
+existing dashboard, bundled verified runtimes and architecture-specific DMGs.
+OpenAI's documented browser login/status flow informs the sign-in buttons. Added
+GUI team creation alongside existing invitation joining. Existing membership,
+signing keys and history are preserved, not bundled. Builds are ad-hoc development
+artifacts; Apple Developer ID/notarization and clean-device validation are not
+claimed complete. No new VPS deployment or Git push is implied by this work.

@@ -13,7 +13,7 @@ const baseCss = `:root{color-scheme:light;font:14px -apple-system,BlinkMacSystem
 
 export const css = baseCss + layoutCss + localCss + interactionCss + routinesCss;
 
-export const js = `const token=location.hash.startsWith('#token=')?decodeURIComponent(location.hash.slice(7)):sessionStorage.getItem('rn-token');if(location.hash.startsWith('#token=')){sessionStorage.setItem('rn-token',token);history.replaceState(null,'','/');}
+export const js = `const token=location.hash.startsWith('#token=')?decodeURIComponent(location.hash.slice(7)):sessionStorage.getItem('rn-token');if(location.hash.startsWith('#token=')){sessionStorage.setItem('rn-token',token);history.replaceState(null,'',location.pathname);}
 const $=s=>document.querySelector(s);const node=(tag,text,cls)=>{const e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e};
 let snapshot,selected,refreshing=false;
 let modelCatalog,modelError='',loadingModels=false;

@@ -83,5 +83,5 @@ if(!g.approvals.length&&!g.reviews.length&&!g.working.length&&!g.queued.length&&
 for(const name of ['home','agent','chats','routines','settings']){$('#tab-'+name).onclick=()=>setMainTab(name);$('#tab-'+name).onkeydown=e=>{if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'].includes(e.key)){e.preventDefault();const names=['home','agent','chats','routines','settings'],index=names.indexOf(mainTab),target=e.key==='Home'?names[0]:e.key==='End'?names[4]:names[(index+(['ArrowLeft','ArrowUp'].includes(e.key)?4:1))%5];setMainTab(target);$('#tab-'+target).focus()}};}
 $('#toggle-sidebar').onclick=()=>{const collapsed=document.querySelector('.workspace').classList.toggle('sidebar-collapsed');$('#toggle-sidebar').setAttribute('aria-expanded',String(!collapsed));$('#toggle-sidebar').setAttribute('aria-label',collapsed?'Show navigation':'Hide navigation')};
 $('#toggle-inspector').onclick=()=>setInspector(!inspectorOpen);$('#clear-selection').addEventListener('click',()=>setInspector(false));
-if(innerWidth<700)$('#toggle-sidebar').click();setInspector(false);setMainTab('home');
+if(innerWidth<700)$('#toggle-sidebar').click();setInspector(false);setMainTab('home');if(location.pathname==='/settings')setMainTab('settings');
 `;

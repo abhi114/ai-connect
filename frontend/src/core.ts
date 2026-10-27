@@ -133,6 +133,7 @@ export class Core {
         return this.remote.durable('/v1/messages',{body:args.body.trim()});
       }
       case 'list_models': return this.models(args.refresh===true);
+      case 'desktop_runtime': return {node:process.execPath,source:import.meta.url};
       case 'network_status': return {network:state.network,member:state.member,connected:this.connected,pending_count:state.outbox.length,error:state.connection_error};
       case 'snapshot': return {server:state.server,network:state.network,member:state.member,members:state.members,repos:state.repos,requests:state.requests.map(r=>({...r,verification:verifyRequest(state,r)})),bindings:state.bindings,runs:state.runs,local_chats:this.worker.local.view(),connected:this.connected,error:state.connection_error,pending:state.outbox.length};
       case 'enroll': {

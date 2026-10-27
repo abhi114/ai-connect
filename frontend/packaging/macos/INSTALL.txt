@@ -1,0 +1,30 @@
+AIConnect for macOS 13.5 or newer
+
+1. Drag AIConnect.app to Applications. Eject the disk image.
+2. Open AIConnect from Applications. Start with Check this Mac.
+3. If Git is missing, click Install Apple Git tools and finish Apple's installer.
+4. Click Sign in to Codex and complete the official sign-in in your browser.
+5. Open dashboard. Settings lets you enter your username and invite code.
+   The AIConnect testing server is already filled in. Only join networks you trust.
+6. Choose Share repository and use the folder picker. Review permissions first.
+7. Optional: connect Codex desktop, open the notification menu, or add a login item.
+
+No Node, npm, Homebrew or Terminal commands are needed for the normal setup.
+Codex desktop is optional and installed separately; Codex CLI is included.
+Your Codex plan/account determines model access and usage limits.
+
+This development build is not notarized unless your distributor says otherwise.
+macOS may block it. Only if you trust the distributor, use System Settings >
+Privacy & Security > Open Anyway after the blocked launch. Organization policy
+may prohibit this. Do not disable Gatekeeper or remove quarantine globally.
+
+Existing AIConnect user: your ~/.repo-network profile is preserved. Finish active
+work and stop the old companion before switching installations. Use the app's
+Connect / repair Codex integration to update the registered installation path.
+Do not rejoin or delete your state. Do not move the installed app after registration.
+
+Closing/quitting the window leaves the companion running. Use Stop companion
+from Setup & connection when you want to stop requests and routines too.
+To uninstall: stop companion, quit the app and notification menu, remove the
+AIConnect MCP entry in Codex if registered, remove any Login Item, then trash the
+app. Your profile/history stays separate and is not automatically deleted.

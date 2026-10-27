@@ -135,3 +135,12 @@ Implemented: native Swift menu bar, authenticated loopback polling, request/appr
 ## VPS testing deployment (27 October 2026)
 
 Live backend: `https://aiconnect.162-35-104-181.sslip.io`. Ubuntu VPS, Node 24.22.1, Caddy public HTTPS, unprivileged systemd relay, restrictive data permissions, UFW, daily SQLite snapshot timer. Existing database migrated and membership/device/signing-key/request continuity verified. Client URL cutover remains manual; local workers/dashboard are still required. Same-server backups are not disaster recovery; off-server recurring backups, owned domain and production hardening remain follow-ups. See backend/deploy/vps/README.md.
+# macOS app packaging addition (27 October 2026)
+
+Implemented native setup screen, embedded dashboard, bundled Node/npm/Codex,
+browser OAuth handoff, Apple Git tools installer handoff, invite/team setup,
+confirmed MCP registration/repair, prebuilt notification helper, explicit companion
+stop and manual Login Items guidance. DMGs are built separately for Apple Silicon
+and Intel. Existing profiles are preserved. This is a development distribution,
+not a notarized public release or automatic updater. Clean-machine OAuth/Git,
+Intel hardware and signed/notarized distribution still require manual validation.

@@ -263,3 +263,18 @@ The scheduler advances and saves next_at before enqueueing a fresh read-only Loc
 ## Hosted testing relay (27 October 2026)
 
 The relay now runs on VPS 162.35.104.181 behind Caddy at `https://aiconnect.162-35-104-181.sslip.io`; Node listens only on 127.0.0.1:8787. Systemd executes as a dedicated unprivileged user, code is versioned under /opt/aiconnect and persistent SQLite is under /var/lib/aiconnect. Daily consistent snapshots are under /var/backups/aiconnect. Only SSH and HTTP/HTTPS are allowed inbound. TLS terminates at Caddy; sslip.io supplies temporary third-party DNS. This changes deployment, not application authorization or local execution. Membership/history migration was checksum/integrity/auth verified. No E2EE or production signup hardening was added. See backend/deploy/vps/README.md for cutover, recovery and verification limits.
+# macOS distribution shell (27 October 2026)
+
+`frontend/native/macos/desktop.swift` wraps the existing localhost dashboard in a
+WKWebView and provides native prerequisite/login/integration controls. It invokes
+the bundled Node `src/desktop.ts` bridge using argument arrays. No native command
+bridge is exposed to web JavaScript. The companion remains a separate current-user
+process, and `desktop_runtime` prevents silently using a different installation.
+The shell preserves the default profile; network setup and sharing still go through
+existing local RPC validation. Quitting the shell does not stop workers.
+
+`frontend/packaging/macos/build.mjs` builds architecture-specific DMGs with pinned,
+integrity-verified Node/Codex distributions, npm, notices and the native notification
+helper. Source inclusion is allowlisted; credentials/data are not inputs. macOS
+13.5+ is required. Ad-hoc signing is the default; Developer ID/notarization remain
+an explicit distribution step. See the packaging README for lifecycle and limits.

@@ -8,6 +8,7 @@
     "start": "node src/cli.ts service run",
     "cli": "node src/cli.ts",
     "mcp": "node src/mcp.ts",
+    "package:mac": "node packaging/macos/build.mjs",
     "test": "node --test test/*.test.ts",
     "check": "tsc --noEmit"
   },

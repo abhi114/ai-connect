@@ -436,3 +436,10 @@ Schedules persist in the local profile only. Pause/remove stops future schedulin
 ## macOS menu bar and request notifications
 
 Run `npm run cli -- menubar install` after restarting the updated companion. This development command builds a small native Swift app (Apple Command Line Tools required) and opens it. Enable notifications explicitly from its **AI◈** menu. It offers default-model approval confirmation, reject/cancel where applicable and dashboard access; existing trust and queue rules remain. The browser can be closed. See [MAC-NOTIFICATIONS.md](MAC-NOTIFICATIONS.md) for setup, limitations and the manual test checklist. Windows is unchanged.
+# macOS desktop installer
+
+For a no-Terminal recipient setup, use the macOS app package. It includes Node,
+npm, Codex CLI, a native setup screen, embedded dashboard and notification helper.
+The existing CLI remains supported. See [packaging/macos/README.md](packaging/macos/README.md)
+for building, installation, safe upgrades, signing and verification limitations.
+Build outputs remain under this frontend's Git-ignored `dist/` directory.
