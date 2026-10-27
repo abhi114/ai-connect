@@ -443,3 +443,15 @@ npm, Codex CLI, a native setup screen, embedded dashboard and notification helpe
 The existing CLI remains supported. See [packaging/macos/README.md](packaging/macos/README.md)
 for building, installation, safe upgrades, signing and verification limitations.
 Build outputs remain under this frontend's Git-ignored `dist/` directory.
+
+## Retrying failed network requests
+
+Open a failed request and choose **Retry request**, or use **Retry…** in its macOS menu-bar entry. Either participant can request a retry. It returns the same request to owner approval, including for repositories with automatic questions. The owner selects the model and reasoning effort again before approving. The original signed task and event history remain; previous local attempts are listed in request details. Each approved retry uses a fresh worktree and preserves partial work from earlier attempts. Retry starts the task again; it does not resume the model session or reset account usage limits. There is no automatic execution retry.
+
+This requires the updated backend `/v1/requests/:id/retry` endpoint and updated client. Rebuild the macOS installer to include the native menu change. Restart the backend after deployment and each companion after updating; an existing installed app does not load changes from a source checkout.
+
+## Menu-bar approval and owner instructions
+
+The macOS menu-bar approval dialog loads the local Codex model catalog and offers the model's supported reasoning efforts. Optional owner instructions (up to 8000 characters) are stored separately from the signed peer request, included in the local approval digest, and supplied to the worker as owner context within existing task and sandbox limits. They are sent to Codex for execution but are not uploaded to the relay as request metadata. The owner can also enter them in dashboard approval controls.
+
+Queued automatic questions offer **Add your task instructions…** in the menu bar. This does not pause the queue: saving is rejected if the worker has already started. Running tasks cannot accept late instructions in this implementation. Ask mode is the reliable choice when every task needs personal input. The active run records the instructions used for that attempt; retries retain previous run snapshots. Updating the native interface requires rebuilding and installing the macOS app.

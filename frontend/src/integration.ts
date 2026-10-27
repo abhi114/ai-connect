@@ -5,6 +5,8 @@ import { dataDir } from './store.ts';
 import { command } from './process.ts';
 
 export const mcpPath=fileURLToPath(new URL('./mcp.ts',import.meta.url));
+// First-time macOS Keychain approval needs human time, not a normal CLI timeout.
+export const integrationTimeoutMs=5*60_000;
 export function registrationArgs(name='aiconnect',profile=dataDir()) {
   if(!/^[a-zA-Z0-9_-]+$/.test(name))throw new Error('Server name must use letters, numbers, underscores or hyphens');
   return ['mcp','add',name,'--env',`RN_HOME=${profile}`,'--env',`RN_PORT=${process.env.RN_PORT||4319}`,
@@ -15,8 +17,15 @@ export class CodexIntegration {
   busy=false;
   profile:string;run:typeof command;
   constructor(profile=dataDir(),run=command){this.profile=profile;this.run=run;}
+  private async invoke(args:string[]) {
+    try {return await this.run(codexBinary(),args,process.cwd(),{timeout:integrationTimeoutMs});}
+    catch(error) {
+      if(error instanceof Error&&error.message==='Command timed out')throw new Error('Codex integration timed out after 5 minutes. Respond to any macOS Keychain prompt, then check integration again before retrying repair.');
+      throw error;
+    }
+  }
   private async entry(){
-    const entries=JSON.parse(await this.run(process.env.RN_CODEX_BIN||'codex',['mcp','list','--json'],process.cwd(),{timeout:15_000}));
+    const entries=JSON.parse(await this.invoke(['mcp','list','--json']));
     if(!Array.isArray(entries))throw new Error('Unexpected Codex MCP catalog');
     return entries.find((e:any)=>e.name==='aiconnect');
   }
@@ -40,9 +49,10 @@ export class CodexIntegration {
       if(!before.repairable)throw new Error('Existing aiconnect entry belongs to another profile or tool. No settings changed; inspect it in Codex settings.');
       if(!before.enabled)throw new Error('AIConnect is disabled in Codex. Enable it in Codex settings first.');
       // codex mcp add updates only the named entry; never remove first.
-      if(!before.matches)await this.run(process.env.RN_CODEX_BIN||'codex',registrationArgs('aiconnect',this.profile),process.cwd(),{timeout:20_000});
+      if(!before.matches)await this.invoke(registrationArgs('aiconnect',this.profile));
       const after=await this.status();if(!after.matches)throw new Error('Registration could not be verified. Inspect Codex MCP settings.');
       return after;
     }finally{this.busy=false;}
   }
 }
+import { codexBinary } from './codex-binary.ts';

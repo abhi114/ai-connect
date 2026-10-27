@@ -13,6 +13,29 @@ async function wait(fn:()=>boolean){for(let i=0;i<200;i++){if(fn())return;await 
 async function repository(root:string,name:string){const path=join(root,name);await mkdir(path);await git(path,'init');await writeFile(join(path,'hello.txt'),'hello\n');await git(path,'add','.');await git(path,'-c','user.name=Test','-c','user.email=test@localhost','commit','-m','initial');return path;}
 async function localFixture(){const root=await mkdtemp(join(tmpdir(),'aiconnect-local-test-'));const path=await repository(root,'project');const core=new Core(new Store(join(root,'profile')));const {binding}=await core.dispatch('local_attach',{path,name:'Private project'});const {chat}=await core.dispatch('local_create',{repo_id:binding.repo_id,title:'Private conversation'});return {root,path,core,binding,chat};}
 
+test('failed signed network work retries after fresh approval in a new worktree with old work intact',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'aiconnect-retry-test-')),path=await repository(root,'repo');
+ const relay=createApp({rateLimit:10000});await new Promise<void>(r=>relay.server.listen(0,'127.0.0.1',r));const server=`http://127.0.0.1:${(relay.server.address() as any).port}`;
+ const owner=new Core(new Store(join(root,'owner'))),peer=new Core(new Store(join(root,'peer')));let calls=0;const workspaces:string[]=[];
+ try{
+  await owner.dispatch('enroll',{name:'Retry test',handle:'owner',server});await peer.dispatch('enroll',{code:(await owner.dispatch('invite')).code,handle:'peer',server});
+  const {repo}=await owner.dispatch('expose',{path,name:'repo',questions:'auto',changes:true});await peer.sync();
+  owner.worker.runner=async(_request,workspace)=>{calls++;workspaces.push(workspace);if(calls===1){await writeFile(join(workspace,'partial.txt'),'keep this work');throw Error('AI timed out');}return {answer:'Retry succeeded',sources:[]};};
+  const {request}=await peer.dispatch('request_change',{repo_id:repo.id,body:'Edit greeting'});
+  await owner.dispatch('approve',{request_id:request.id,execution:{}});
+  await wait(()=>!owner.worker.active.size&&owner.store.state.runs[request.id]?.state==='failed');
+  await peer.dispatch('retry',{request_id:request.id,confirmed:true});await owner.sync();
+  assert.equal(calls,1);assert.equal(owner.store.state.requests.find(r=>r.id===request.id).status,'approval_pending');
+  await owner.dispatch('approve',{request_id:request.id,execution:{}});
+  // The stub returns no changes, so the second attempt safely fails diff inspection.
+  await wait(()=>calls===2&&!owner.worker.active.size);
+  assert.notEqual(workspaces[0],workspaces[1]);
+  assert.equal(await readFile(join(workspaces[0],'partial.txt'),'utf8'),'keep this work');
+  assert.equal(await git(path,'status','--porcelain=v1'),'');
+  assert.equal((await owner.dispatch('get_request',{request_id:request.id})).previous_attempts.length,1);
+ }finally{owner.worker.stop();peer.worker.stop();await wait(()=>!owner.worker.active.size&&!peer.worker.active.size);await relay.close();}
+});
+
 test('private conversations persist, use an isolated persistent worktree, and run without relay enrollment',async()=>{
  const {path,core,binding,chat}=await localFixture();const inputs:any[]=[];
  core.worker.local.runner=async(input)=>{inputs.push(input);return {answer:'Remember: shipping threshold is 50'};};

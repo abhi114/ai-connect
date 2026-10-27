@@ -67,7 +67,7 @@ export class Worker {
         (this.active.has(r.request_id) || ['claiming','running','awaiting_review','delivery_pending'].includes(r.state)))) continue;
       const explicit=this.store.state.execution_options?.[request.id];
       const execution=explicit??(request.kind==='question'&&binding.questions==='auto'?binding.auto_execution:undefined);
-      const run:Run={request_id:request.id,repo_id:request.repo_id,state:'claiming',execution:{...execution}};
+      const run:Run={request_id:request.id,repo_id:request.repo_id,state:'claiming',execution:{...execution},owner_context:this.store.state.owner_contexts?.[request.id]||''};
       this.store.state.runs[request.id]=run; this.store.save();
       void this.execute(request,run);
     }
@@ -82,9 +82,10 @@ export class Worker {
       run.lease_token=lease.lease_token; run.state='running'; this.store.save();
       authorize(this.store.state,lease.request || request);
       await this.remote.mutate(`/v1/requests/${request.id}/heartbeat`,{lease_token:run.lease_token});
-      Object.assign(run,await makeWorktree(binding,this.store.dir,request.id,request.kind==='change')); this.store.save();
+      const workspaceId=this.store.state.run_attempts?.[request.id]?.length?request.id+'-'+randomUUID().slice(0,8):request.id;
+      Object.assign(run,await makeWorktree(binding,this.store.dir,workspaceId,request.kind==='change')); this.store.save();
       const mainBefore=await git(binding.path,'status','--porcelain=v1');
-      const response=await this.runner(request,run.worktree!,controller.signal,run.execution,recordActivity(this.store,run));
+      const response=await this.runner(request,run.worktree!,controller.signal,run.execution,recordActivity(this.store,run),undefined,run.owner_context);
       if (run.state!=='running' || controller.signal.aborted) throw new Error('Run cancelled or lease lost');
       if (await git(binding.path,'status','--porcelain=v1')!==mainBefore) throw new Error('Main checkout changed while task ran; held for owner review');
       run.answer=response.answer;

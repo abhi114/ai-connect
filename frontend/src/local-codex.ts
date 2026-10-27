@@ -1,4 +1,5 @@
 import { command } from './process.ts';
+import { fileURLToPath } from 'node:url';
 import type { ActivitySink } from './activity.ts';
 import { executionArgs, type ExecutionOptions } from './models.ts';
 
@@ -13,7 +14,7 @@ You may give short public progress updates while working, but never expose priva
 export function parseLocalResponse(output:string):LocalResponse {
   let last='';for(const line of output.split('\n'))try{const e=JSON.parse(line);if(e.type==='item.completed'&&e.item?.type==='agent_message')last=e.item.text;}catch{}
   let result:any;try{result=JSON.parse(last)}catch{throw Error('Local Codex response was not valid JSON');}
-  if(typeof result.answer!=='string'||!result.answer.trim()||result.answer.length>24000)throw Error('Invalid local answer');
+  if(!result||typeof result.answer!=='string'||!result.answer.trim()||result.answer.length>24000)throw Error('Invalid local answer');
   const delegations=result.delegations??[];
   if(!Array.isArray(delegations)||delegations.length>5||delegations.some(d=>!d||typeof d.repo_id!=='string'||!['question','change'].includes(d.kind)||typeof d.body!=='string'||!d.body.trim()||d.body.length>16000))throw Error('Invalid delegation proposals');
   const next_steps=Array.isArray(result.next_steps)?result.next_steps.filter((s:any)=>s&&typeof s.label==='string'&&s.label.trim()&&s.label.length<=60&&typeof s.prompt==='string'&&s.prompt.trim()&&s.prompt.length<=2000).slice(0,3):[];
@@ -21,8 +22,9 @@ export function parseLocalResponse(output:string):LocalResponse {
 }
 // Persist conversation ourselves, not an implicit global CLI session. Reapply the
 // current turn's sandbox and trusted policy every time; never silently truncate history.
-export async function runLocalCodex(input:any,worktree:string,signal:AbortSignal,execution:ExecutionOptions,change:boolean,onEvent?:ActivitySink):Promise<LocalResponse>{
+export async function runLocalCodex(input:any,worktree:string,signal:AbortSignal,execution:ExecutionOptions,change:boolean,onEvent?:ActivitySink,run=command):Promise<LocalResponse>{
   const text=JSON.stringify(input);if(Buffer.byteLength(text)>180000)throw Error('Conversation context limit reached. Start a new chat with a summary; history is preserved.');
-  const output=await command(process.env.RN_CODEX_BIN||'codex',['exec','--ignore-user-config','--ignore-rules','--sandbox',change?'workspace-write':'read-only','-c','approval_policy="never"','-c','sandbox_workspace_write.network_access=false','-c','developer_instructions='+JSON.stringify(localInstructions(change)),...executionArgs(execution),'--json','--ephemeral','-C',worktree,'-'],worktree,{input:text,signal,timeout:20*60_000,maxBytes:4_000_000,onEvent});
+  const output=await run(codexBinary(),['exec','--ignore-user-config','--ignore-rules','--sandbox',change?'workspace-write':'read-only','-c','approval_policy="never"','-c','sandbox_workspace_write.network_access=false','-c','developer_instructions='+JSON.stringify(localInstructions(change)),...executionArgs(execution),'--output-schema',fileURLToPath(new URL('./local-response.schema.json',import.meta.url)),'--json','--ephemeral','-C',worktree,'-'],worktree,{input:text,signal,timeout:20*60_000,maxBytes:4_000_000,onEvent});
   return parseLocalResponse(output);
 }
+import { codexBinary } from './codex-binary.ts';

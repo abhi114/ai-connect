@@ -319,12 +319,18 @@ export function createApp(options: ServerOptions = {}) {
       const requests = all('SELECT payload FROM requests WHERE network_id=? AND (sender_member_id=? OR owner_member_id=?) ORDER BY rowid DESC LIMIT 1000', member.network_id, member.id, member.id).map(r => JSON.parse(r.payload)).filter(r => !status || r.status === status);
       return {body: {requests}};
     }
-    match = path.match(/^\/v1\/requests\/([^/]+)(?:\/(approve|reject|cancel|claim|heartbeat|complete|fail|accept|close))?$/);
+    match = path.match(/^\/v1\/requests\/([^/]+)(?:\/(approve|reject|cancel|claim|heartbeat|complete|fail|accept|close|retry))?$/);
     if (match) {
       const request = requestById(match[1], auth); const action = match[2];
       if (method === 'GET' && !action) return {body: {request, result_signature:proof(member.network_id,'result',request.id), result: one('SELECT payload FROM results WHERE request_id=?', request.id) ? JSON.parse(one('SELECT payload FROM results WHERE request_id=?', request.id)!.payload) : null, events: all('SELECT * FROM events WHERE request_id=? ORDER BY id', request.id).map(e => ({...e, payload: JSON.parse(e.payload)}))}};
       if (method !== 'POST' || !action) fail(404, 'not_found', 'Endpoint not found');
-      if (['approve','reject'].includes(action)) {
+      if (action === 'retry') {
+        allowed(body, []);
+        if(request.status!=='failed')fail(409,'invalid_state','Only failed requests can be retried');
+        activeRepo(request,auth);
+        run('DELETE FROM approvals WHERE request_id=?',request.id);
+        saveRequest(request,'approval_pending',member.id,'request.retry_requested');
+      } else if (['approve','reject'].includes(action)) {
         allowed(body, ['reason']); owner(request, auth);
         if (request.status !== 'approval_pending') fail(409, 'invalid_state', 'Request is not awaiting approval');
         if (action === 'approve') activeRepo(request, auth);

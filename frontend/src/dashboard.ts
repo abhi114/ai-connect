@@ -18,6 +18,7 @@ const $=s=>document.querySelector(s);const node=(tag,text,cls)=>{const e=documen
 let snapshot,selected,refreshing=false;
 let modelCatalog,modelError='',loadingModels=false;
 const executionDrafts=new Map();
+const ownerContextDrafts=new Map();
 const policyDrafts=new Map();
 async function loadModels(force=false){if(loadingModels)return;loadingModels=true;try{modelCatalog=await rpc('list_models',{refresh:force});modelError=''}catch(e){modelCatalog=undefined;modelError=e.message}finally{loadingModels=false}await showSelected();renderProject();renderLocal();renderRoutineModels();}
 function approvalControls(id,automatic=false){
@@ -60,7 +61,15 @@ async function showSelected(){if(!selected)return;const id=selected;const target
  if(result?.tests?.length)target.append(node('p','Tests: '+result.tests.map(t=>t.status+' — '+t.name).join('; '),'muted'));
  if(result?.sources?.length)target.append(node('p','Sources: '+result.sources.map(s=>s.path+(s.line?':'+s.line:'')).join(', '),'muted'));
  const actions=node('div',undefined,'actions');const owner=r.owner_member_id===snapshot.member?.id;
- if(owner&&!run&&r.verification?.status==='verified'&&['approval_pending','queued'].includes(r.status)){target.append(approvalControls(id));actions.append(button('Approve request',()=>rpc('approve',{request_id:id,execution:executionDrafts.get(id)||{}})),button('Reject',()=>rpc('reject',{request_id:id})));}
+ const retryApproval=r.status==='approval_pending'&&run&&['failed','interrupted'].includes(run.state);
+ if(owner&&(!run||retryApproval)&&r.verification?.status==='verified'&&['approval_pending','queued'].includes(r.status)){
+ target.append(approvalControls(id));const context=node('textarea');context.rows=3;context.maxLength=8000;context.setAttribute('aria-label','Your task instructions');context.placeholder='Optional guidance from you for this task…';context.value=ownerContextDrafts.get(id)??detail.owner_context??'';context.oninput=()=>ownerContextDrafts.set(id,context.value);target.append(node('h4','Your instructions · separate from the original request'),context,node('p','Kept on this computer. Locked once the task starts.','hint'));
+ actions.append(button('Approve request',()=>rpc('approve',{request_id:id,execution:executionDrafts.get(id)||{},owner_context:context.value})),button('Reject',()=>rpc('reject',{request_id:id})));
+ if(r.status==='queued')actions.append(button('Save instructions before task starts',()=>rpc('owner_context',{request_id:id,owner_context:context.value,confirmed:true})));
+ }
+ if(owner&&run?.owner_context)target.append(message('Your instructions for this attempt · local owner context',run.owner_context,false));
+ if(r.status==='failed'&&r.verification?.status==='verified')actions.append(button('Retry request',async()=>{if(confirm('Retry this failed task? The owner must approve again and can select a model and reasoning effort. A fresh worktree will be used; partial work is preserved.')){await rpc('retry',{request_id:id,confirmed:true});detailCache.delete(id);notify('Retry requested. Waiting for owner approval.')}}));
+ if(detail.previous_attempts?.length){const attempts=node('details');attempts.append(node('summary','Previous attempts · '+detail.previous_attempts.length));for(const attempt of detail.previous_attempts)attempts.append(node('p',label(attempt.state)+' · '+(attempt.error||'')+(attempt.worktree?' · Preserved workspace: '+attempt.worktree:'')));target.append(attempts);}
  const execution=run?.execution||detail.local_execution;
  if(owner&&execution)target.append(node('p','Approved execution: '+(execution.model||'Codex default (isolated worker)')+' · reasoning: '+(execution.reasoning_effort||'model default'),'muted'));
  if(run?.state==='awaiting_review'){actions.append(button('Inspect diff',()=>openWorkspace(id)),button('Commit & send reviewed change',async()=>{if(confirm('Commit reviewed changes on the isolated branch and send the result? This does not merge or push.'))await rpc('deliver',{request_id:id})}));}

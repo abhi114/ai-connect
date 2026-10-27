@@ -26,3 +26,16 @@ test('packaging pins runtimes, excludes profile inputs and keeps setup local',()
   assert.match(native,/127\.0\.0\.1/);assert.match(native,/\.nonPersistent\(\)/);
   assert.doesNotMatch(native,/WKScriptMessageHandler/);
 });
+test('bundled menu opens its owning desktop app and preserves browser fallback for CLI installs',()=>{
+  const menu=readFileSync(new URL('../native/macos/main.swift',import.meta.url),'utf8');
+  const action=menu.slice(menu.indexOf('@objc func dashboard()'),menu.indexOf('@objc func toggleAlerts()'));
+  assert.match(action,/Bundle\(url:desktop\)\?\.bundleIdentifier == "io.aiconnect.desktop"/);
+  assert.match(action,/configuration.arguments = \["--open-dashboard"\]/);
+  assert.match(action,/openApplication\(at:desktop/);
+  assert.ok(action.indexOf('return')<action.indexOf('try connection()'));
+  const native=readFileSync(new URL('../native/macos/desktop.swift',import.meta.url),'utf8');
+  assert.match(native,/CommandLine.arguments.contains\("--open-dashboard"\)/);
+  assert.match(native,/guard !busy,pendingDashboard else/);
+  assert.match(native,/if window.contentView !== web/);
+  assert.match(native,/window.deminiaturize\(nil\)/);
+});

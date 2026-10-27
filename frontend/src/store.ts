@@ -14,6 +14,7 @@ export interface Binding {
   allowed_paths: string[]; max_diff_bytes: number;
 }
 export interface Run {
+  owner_context?: string;
   activity?: import('./activity.ts').Activity[];
   activity_truncated?: boolean; started_at?:number; finished_at?:number;
   local_chat_id?: string;
@@ -25,6 +26,8 @@ export interface Run {
   error?: string; result?: unknown; delivery_key?: string;
 }
 export interface State {
+  owner_contexts?: Record<string,string>;
+  run_attempts?: Record<string,Run[]>;
   routines?: Record<string,import('./routines.ts').Routine>;
   local_chats?: Record<string,LocalChat>;
   signing?: {public_key:string;private_key:string};

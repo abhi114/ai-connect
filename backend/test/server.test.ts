@@ -28,6 +28,28 @@ async function setup(databasePath = ':memory:', options: ServerOptions = {}) {
 }
 const answer = {kind:'question_result',answer:'Tax is calculated in checkout.',base_commit:'a'.repeat(40),sources:[{path:'src/tax.ts',line:4}]};
 
+test('manual retry retains history, requires fresh approval, and fences the old worker',async t=>{
+  const f=await setup();t.after(()=>f.app.close());
+  const owner=await f.create(),sender=await f.joinMember(owner),other=await f.joinMember(owner,'other');
+  const repo=await f.publish(owner),{request}=await f.request(sender,repo),path='/v1/requests/'+request.id;
+  assert.equal((await f.api(path+'/retry',{},sender.token)).status,409);
+  const lease=await f.api(path+'/claim',{},owner.token);
+  await f.api(path+'/fail',{lease_token:lease.lease_token,code:'timeout',message:'Timed out'},owner.token);
+  assert.equal((await f.api(path+'/retry',{},other.token)).status,404);
+  const retried=await f.api(path+'/retry',{},sender.token);
+  assert.equal(retried.request.status,'approval_pending');
+  assert.equal((await f.api(path+'/retry',{},owner.token)).status,409);
+  assert.equal((await f.api(path+'/claim',{},owner.token)).status,409);
+  await f.api(path+'/approve',{},owner.token);
+  const next=await f.api(path+'/claim',{},owner.token);assert.equal(next.attempt,2);
+  assert.equal((await f.api(path+'/complete',{lease_token:lease.lease_token,result:answer},owner.token)).status,409);
+  assert.equal((await f.api(path+'/complete',{lease_token:next.lease_token,result:answer},owner.token)).request.status,'answered');
+  const detail=await f.api(path,undefined,sender.token);
+  assert.ok(detail.events.some((e:any)=>e.type==='request.failed'));
+  assert.ok(detail.events.some((e:any)=>e.type==='request.retry_requested'));
+  assert.equal((await f.api(path+'/retry',{},sender.token)).status,409);
+});
+
 test('network chat is durable, scoped, idempotent, paginated, and does not reveal private requests', async t => {
   const dir = mkdtempSync(join(tmpdir(), 'aiconnect-chat-'));
   const path = join(dir, 'relay.sqlite');

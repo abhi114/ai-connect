@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CodexIntegration, mcpPath } from '../src/integration.ts';
+import { CodexIntegration, mcpPath, integrationTimeoutMs } from '../src/integration.ts';
 import { command } from '../src/process.ts';
 
 function fixture(entry?:any){
@@ -8,6 +8,24 @@ function fixture(entry?:any){
   const run:typeof command=async(_binary,args)=>{calls.push(args);if(args[1]==='list')return JSON.stringify(entry?[entry]:[]);assert.equal(args[1],'add');entry={name:'aiconnect',enabled:true,transport:{command:process.execPath,args:[mcpPath],env:{RN_HOME:'/test-profile',RN_PORT:process.env.RN_PORT||'4319'}}};return 'Added';};
   return {integration:new CodexIntegration('/test-profile',run),calls};
 }
+test('all integration commands allow five minutes for interactive Keychain approval',async()=>{
+  const timeouts:number[]=[];let entry:any;
+  const run:typeof command=async(_exe,args,_cwd,options)=>{
+    timeouts.push(options?.timeout!);
+    if(args[1]==='list')return JSON.stringify(entry?[entry]:[]);
+    entry={name:'aiconnect',transport:{command:process.execPath,args:[mcpPath],env:{RN_HOME:'/test-profile',RN_PORT:process.env.RN_PORT||'4319'}}};return 'Added';
+  };
+  const integration=new CodexIntegration('/test-profile',run);const before=await integration.status();
+  assert.equal((await integration.register({confirmed:true,fingerprint:before.fingerprint})).matches,true);
+  assert.equal(timeouts.length,4);assert.equal(integrationTimeoutMs,300_000);
+  assert.ok(timeouts.every(t=>t===integrationTimeoutMs));
+});
+test('integration timeout explains Keychain and safe retry without exposing credentials',async()=>{
+  const integration=new CodexIntegration('/test-profile',async()=>{throw Error('Command timed out')});
+  await assert.rejects(integration.status(),/5 minutes.*Keychain.*check integration again/);
+  await assert.rejects(integration.register({confirmed:true}),/5 minutes/);
+  assert.equal(integration.busy,false);
+});
 test('dashboard registration requires explicit current consent and only upserts aiconnect',async()=>{
   const {integration,calls}=fixture();const before=await integration.status();
   await assert.rejects(integration.register({fingerprint:before.fingerprint}),/confirm again/);

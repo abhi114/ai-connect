@@ -15,7 +15,7 @@ export function dashboardURL(raw:string, settings=false) {
   url.pathname=settings?'/settings':'/';return url.href;
 }
 export async function desktopAction(action:string, run=command, signal?:AbortSignal):Promise<any> {
-  const codex=process.env.RN_CODEX_BIN||'codex';
+  const codex=codexBinary();
   if(action==='check') {
     const check=async(exe:string,args:string[])=>{try{await run(exe,args,dataDir(),{timeout:15_000});return true}catch{return false}};
     // xcode-select detects the missing developer tools without triggering Git's OS prompt.
@@ -45,3 +45,4 @@ if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)) {
   if(process.argv[2]==='login')for(const signal of ['SIGINT','SIGTERM'])process.on(signal,()=>controller.abort());
   desktopAction(process.argv[2],command,controller.signal).then(result=>console.log(JSON.stringify(result))).catch(error=>{console.error(error.message);process.exitCode=1});
 }
+import { codexBinary } from './codex-binary.ts';

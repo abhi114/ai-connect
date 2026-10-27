@@ -1,0 +1,33 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["answer", "delegations", "next_steps"],
+  "properties": {
+    "answer": {"type": "string"},
+    "delegations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["repo_id", "kind", "body"],
+        "properties": {
+          "repo_id": {"type": "string"},
+          "kind": {"type": "string", "enum": ["question", "change"]},
+          "body": {"type": "string"}
+        }
+      }
+    },
+    "next_steps": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["label", "prompt"],
+        "properties": {
+          "label": {"type": "string"},
+          "prompt": {"type": "string"}
+        }
+      }
+    }
+  }
+}

@@ -7,7 +7,14 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     var web: WKWebView!
     var setup: NSStackView!
     var status: NSTextField!
-    var busy = false
+    var pendingDashboard = false
+    var busy = false {
+        didSet {
+            if !busy && pendingDashboard {
+                DispatchQueue.main.async {self.resumeDashboardOpen()}
+            }
+        }
+    }
     var origin: URL?
     var loginProcess: Process?
     let resources = Bundle.main.resourceURL!
@@ -48,7 +55,7 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
             buttons.forEach{$0.isEnabled = false}; return
         }
         try? FileManager.default.createDirectory(at:profile,withIntermediateDirectories:true,attributes:[.posixPermissions:0o700])
-        if UserDefaults.standard.bool(forKey:"openedDashboard") {openDashboard("start")} else {check()}
+        if CommandLine.arguments.contains("--open-dashboard") || UserDefaults.standard.bool(forKey:"openedDashboard") {openDashboard("start")} else {check()}
     }
     func add(_ title:String,_ action:Selector){let b=NSButton(title:title,target:self,action:action);b.bezelStyle = .rounded;setup.addArrangedSubview(b);buttons.append(b)}
     @objc func showSetup(){
@@ -111,7 +118,17 @@ final class DesktopApp: NSObject, NSApplicationDelegate, WKNavigationDelegate, W
     @objc func stop(){guard confirm("Stop the companion?","New requests and routines cannot run until you open the dashboard again. Finish active tasks first. Membership and history will be kept.") else{return};bridge("stop"){_ in self.status.stringValue="Companion stopped. Open dashboard to start it again."}}
     func confirm(_ title:String,_ text:String)->Bool{let a=NSAlert();a.messageText=title;a.informativeText=text;a.addButton(withTitle:"Continue");a.addButton(withTitle:"Cancel");return a.runModal() == .alertFirstButtonReturn}
     func applicationShouldTerminate(_ sender:NSApplication)->NSApplication.TerminateReply{loginProcess?.terminate();return .terminateNow}
-    func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows flag:Bool)->Bool{window.makeKeyAndOrderFront(nil);return true}
+    func resumeDashboardOpen(){
+        guard !busy,pendingDashboard else{return}
+        pendingDashboard=false
+        openDashboard("start")
+    }
+    func applicationShouldHandleReopen(_ sender:NSApplication,hasVisibleWindows flag:Bool)->Bool{
+        window.deminiaturize(nil);window.makeKeyAndOrderFront(nil);NSApp.activate(ignoringOtherApps:true)
+        // Preserve the current conversation when the dashboard is already open.
+        if window.contentView !== web {pendingDashboard=true;resumeDashboardOpen()}
+        return true
+    }
     func webView(_ webView:WKWebView,decidePolicyFor action:WKNavigationAction,decisionHandler:@escaping(WKNavigationActionPolicy)->Void){
         guard let url=action.request.url else{decisionHandler(.cancel);return}
         if url.scheme=="http",url.host=="127.0.0.1",url.port==origin?.port{decisionHandler(.allow);return}

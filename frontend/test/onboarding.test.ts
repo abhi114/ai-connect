@@ -6,6 +6,18 @@ import { join } from 'node:path';
 import { Store } from '../src/store.ts';
 import { Core } from '../src/core.ts';
 import { createApp } from '../../backend/src/server.ts';
+import { onboardingJs } from '../src/onboarding.ts';
+
+test('integration feedback stays beside repair and prevents duplicate operations',()=>{
+  assert.match(onboardingJs,/integration-register'\)\.after\(integrationFeedback\)/);
+  assert.match(onboardingJs,/aria-live','polite/);
+  assert.match(onboardingJs,/Each Codex step allows up to 5 minutes/);
+  const handlers=onboardingJs.slice(onboardingJs.indexOf("$('#integration-check').onclick"));
+  assert.doesNotMatch(handlers,/setup-error/);
+  assert.equal((handlers.match(/if\(integrationBusy\)return/g)||[]).length,2);
+  assert.match(handlers,/Could not repair integration/);
+  assert.doesNotThrow(()=>new Function(onboardingJs));
+});
 
 test('dashboard invite/join preserves existing identity and enforces admin-only invitations',async()=>{
   const dir=await mkdtemp(join(tmpdir(),'aiconnect-onboarding-'));

@@ -48,6 +48,14 @@ Keep the old local relay stopped after cutover. Running two writable copies and 
 
 ## Operations (run over SSH)
 
+### 28 October 2026 update — request controls
+
+Release directory: `/opt/aiconnect/releases/20261028-request-controls`. This update adds the authenticated, participant-scoped `POST /v1/requests/:id/retry` endpoint. Only failed requests can be retried; every retry returns to owner approval. Previous approvals are removed and existing lease tokens cannot complete the new attempt. No database migration is required.
+
+Deployment uses a Git archive of the committed `backend/src`, `backend/package.json`, and `shared` files. Before switching the code symlink, run the existing backup service, stop the backend, record SQLite integrity/counts, activate the new release, and restart. Verify local/public readiness and the active source path. The live database path remains `/var/lib/aiconnect/pantheon.sqlite`. Keep the initial release for code rollback; no database restore is needed for this additive endpoint update.
+
+Client updates also include schema-constrained Codex responses, manual retry controls, Windows executable discovery, longer Keychain timeouts, and native menu-bar model/effort/owner-instruction controls. Install the rebuilt Mac app and restart the Windows companion after pulling. Test verification for this release: frontend 101 passing tests plus one skipped live-Codex test; backend 18 passing tests; both TypeScript checks passed. Real account/model execution and native interaction remain part of the two-device manual test.
+
 ```sh
 systemctl status aiconnect --no-pager
 journalctl -u aiconnect -n 50 --no-pager

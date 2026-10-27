@@ -4,11 +4,12 @@ import type { Binding, State } from './store.ts';
 import type { ExecutionOptions } from './models.ts';
 import { requireVerified } from './trust.ts';
 
-export function approvalDigest(request: RepoRequest, execution:ExecutionOptions={}) {
+export function approvalDigest(request: RepoRequest, execution:ExecutionOptions={},ownerContext='') {
   const fields:unknown[]=[request.id,request.repo_id,request.sender_member_id,request.owner_member_id,request.kind,request.title,request.body,request.constraints,request.base_ref];
   if(request.signature)fields.push(request.signature);
   // Preserve old default approvals while binding explicit selections to consent.
   if(execution.model||execution.reasoning_effort)fields.push([execution.model,execution.reasoning_effort]);
+  if(ownerContext)fields.push({owner_context:ownerContext});
   return createHash('sha256').update(JSON.stringify(fields)).digest('hex');
 }
 export function authorize(state: State, request: RepoRequest): Binding {
@@ -22,7 +23,7 @@ export function authorize(state: State, request: RepoRequest): Binding {
   if (!['queued','claimed','running'].includes(request.status)) throw new Error('Request is not executable');
   if (request.kind==='change' && (!binding.changes || !repo.changes_enabled)) throw new Error('Changes disabled');
   if (request.kind==='question' && (binding.questions==='off' || !repo.questions_enabled)) throw new Error('Questions disabled');
-  if ((request.kind==='change' || binding.questions==='ask' || repo.questions_require_approval) && state.approvals[request.id]!==approvalDigest(request,state.execution_options?.[request.id])) throw new Error('Exact request has not been approved locally');
+  if ((request.kind==='change' || binding.questions==='ask' || repo.questions_require_approval) && state.approvals[request.id]!==approvalDigest(request,state.execution_options?.[request.id],state.owner_contexts?.[request.id])) throw new Error('Exact request has not been approved locally');
   requireVerified(state,request);
   return binding;
 }

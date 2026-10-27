@@ -8,7 +8,7 @@ import { mcpPath, registrationArgs, CodexIntegration } from './integration.ts';
 export { mcpPath, registrationArgs } from './integration.ts';
 export async function setup(options:Record<string,any>) {
   if(Number(process.versions.node.split('.')[0])<24) throw new Error('Node 24 or newer is required');
-  const binary=process.env.RN_CODEX_BIN||'codex';
+  const binary=codexBinary();
   await command(binary,['--version'],process.cwd());
   await command('git',['--version'],process.cwd());
   const status=await ensureService();
@@ -47,3 +47,4 @@ export async function checkMcp() {
   if(!init?.result?.serverInfo || !list?.result?.tools?.length || !status?.result || status.result.isError) throw new Error('MCP transport check failed: '+JSON.stringify(status||replies));
   return {mcp:'ok',tools:list.result.tools.map((t:any)=>t.name),network:JSON.parse(status.result.content[0].text)};
 }
+import { codexBinary } from './codex-binary.ts';

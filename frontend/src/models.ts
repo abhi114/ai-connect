@@ -5,7 +5,7 @@ export interface ModelChoice { model:string; name:string; efforts:string[]; defa
 export interface ModelCatalog { models:ModelChoice[]; fetched_at:number }
 
 // Read-only app-server session: never creates a thread or starts an inference.
-export async function discoverModels(cwd:string, executable=process.env.RN_CODEX_BIN||'codex', prefixArgs:string[]=[]):Promise<ModelCatalog> {
+export async function discoverModels(cwd:string, executable=codexBinary(), prefixArgs:string[]=[]):Promise<ModelCatalog> {
   return new Promise((resolve,reject)=>{
     const child=spawn(executable,[...prefixArgs,'app-server','--listen','stdio://','-c','model_provider="openai"'],{cwd,shell:false,windowsHide:true,stdio:['pipe','pipe','pipe']});
     let done=false,buffer='',bytes=0,id=1,pages=0;
@@ -57,3 +57,4 @@ export function validateExecution(value:unknown, catalog?:ModelCatalog):Executio
 export function executionArgs(options:ExecutionOptions={}) {
   return [...(options.model?['--model',options.model]:[]),...(options.reasoning_effort?['-c',`model_reasoning_effort=${JSON.stringify(options.reasoning_effort)}`]:[])];
 }
+import { codexBinary } from './codex-binary.ts';

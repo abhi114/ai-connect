@@ -16,6 +16,11 @@ import { Routines } from './routines.ts';
 import { notificationView } from './notifications.ts';
 
 export class Core {
+  private ownerContext(value:unknown) {
+    if(value===undefined)return '';
+    if(typeof value!=='string'||value.length>8000)throw Error('Your task instructions must be at most 8000 characters');
+    return value.trim();
+  }
   changingServer=false; private activeDispatches=0;
   folderPicker=pickFolder;
   integration:CodexIntegration; enrolling=false;
@@ -83,11 +88,11 @@ export class Core {
     switch(method) {
       case 'notification_status': return notificationView(state,this.connected);
       case 'notification_action': {
-        if(args.confirmed!==true||!['approve','reject','cancel'].includes(args.action))throw Error('Confirm a supported notification action');
-        await this.sync();
+        if(args.confirmed!==true||!['approve','reject','cancel','retry','owner_context'].includes(args.action))throw Error('Confirm a supported notification action');
+        if(args.action!=='owner_context')await this.sync();
         const row=notificationView(state,this.connected).rows.find(r=>r.id===args.request_id);
         if(!row?.actions.includes(args.action))throw Error('Request changed or action is unavailable. Review it in the dashboard.');
-        return this.dispatchInner(args.action,{request_id:args.request_id,execution:{}});
+        return this.dispatchInner(args.action,{request_id:args.request_id,execution:args.execution||{},owner_context:args.owner_context,confirmed:true});
       }
       case 'routine_list': return {routines:this.routines.view()};
       case 'routine_save': {const execution=validateExecution(args.execution,args.execution?.model?await this.models(true):undefined);return {routine:this.routines.save(args,execution)};}
@@ -198,19 +203,46 @@ export class Core {
         const data=await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`);
         const verified=verifyRequest(state,data.request);
         const resultVerification=data.result?verification(state,data.result_signature,'result',resultPayload(data.request,data.result),data.request.owner_member_id):undefined;
-        return {...data,request:{...data.request,verification:verified},result_verification:resultVerification,local_run:state.runs[args.request_id],local_execution:state.execution_options?.[args.request_id]};
+        return {...data,request:{...data.request,verification:verified},result_verification:resultVerification,local_run:state.runs[args.request_id],previous_attempts:state.run_attempts?.[args.request_id]||[],owner_context:state.owner_contexts?.[args.request_id]||'',local_execution:state.execution_options?.[args.request_id]};
+      }
+      case 'owner_context': {
+        if(args.confirmed!==true)throw Error('Confirm saving your task instructions');
+        const {request}=await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`);
+        await this.remote.refreshTrust();requireVerified(state,request);
+        if(request.owner_member_id!==state.member?.id||!state.bindings[request.repo_id])throw Error('Only the bound owner can add task instructions');
+        if(request.status!=='queued'||state.runs[request.id])throw Error('Task has started or changed. Instructions are locked for this attempt.');
+        const context=this.ownerContext(args.owner_context);
+        const old=state.owner_contexts?.[request.id]||'';
+        const approved=state.approvals[request.id]===approvalDigest(request,state.execution_options?.[request.id],old);
+        state.owner_contexts||={};state.owner_contexts[request.id]=context;
+        if(approved)state.approvals[request.id]=approvalDigest(request,state.execution_options?.[request.id],context);
+        this.store.save();return {saved:true};
+      }
+      case 'retry': {
+        if(args.confirmed!==true)throw Error('Confirm retrying this failed request');
+        const {request}=await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`);
+        if(request.status!=='failed')throw Error('Only failed requests can be retried');
+        if(this.worker.active.has(request.id))throw Error('Wait for the previous worker to stop');
+        await this.remote.refreshTrust();requireVerified(state,request);
+        const result=await this.remote.durable(`/v1/requests/${encodeURIComponent(request.id)}/retry`,{});
+        await this.sync();return result;
       }
       case 'approve': {
         const {request}=await this.remote.call(`/v1/requests/${encodeURIComponent(args.request_id)}`);
         if(request.owner_member_id!==state.member?.id || !state.bindings[request.repo_id]) throw new Error('Only the bound repo owner may approve locally');
         await this.remote.refreshTrust();requireVerified(state,request);
         if(request.status!=='approval_pending' && request.status!=='queued') throw new Error('Request cannot be approved in its current state');
-        if(state.runs[request.id])throw new Error('Request already has a local run; execution settings are locked');
+        const previous=state.runs[request.id];
+        const retryable=()=>request.status==='approval_pending'&&previous&&['failed','interrupted'].includes(previous.state)&&!this.worker.active.has(request.id);
+        if(previous&&!retryable())throw new Error('Request already has a local run; execution settings are locked');
         const execution=validateExecution(args.execution,args.execution?.model?await this.models(true):undefined);
+        const ownerContext=this.ownerContext(args.owner_context??state.owner_contexts?.[request.id]??'');
         // Recheck after asynchronous discovery so another approval cannot change a started run.
-        if(state.runs[request.id])throw new Error('Request already has a local run; execution settings are locked');
+        if(state.runs[request.id]!==previous||(previous&&!retryable()))throw new Error('Request already has a local run; execution settings are locked');
+        if(previous){state.run_attempts||={};(state.run_attempts[request.id]||=[]).push(previous);delete state.runs[request.id];}
         state.execution_options ||= {}; state.execution_options[request.id]=execution;
-        state.approvals[request.id]=approvalDigest(request,execution); this.store.save();
+        state.owner_contexts||={};state.owner_contexts[request.id]=ownerContext;
+        state.approvals[request.id]=approvalDigest(request,execution,ownerContext); this.store.save();
         const result=request.status==='approval_pending'?await this.remote.durable(`/v1/requests/${request.id}/approve`,{}):{request};
         await this.sync(); return result;
       }
@@ -226,10 +258,11 @@ export class Core {
       case 'workspace_reveal': return revealWorkspace(this.store,args.request_id,args.path);
       case 'doctor': {
         const checks:any={node:process.version,server:state.server,connected:this.connected,credential_storage:'0600 file (Windows inherits profile directory ACL)',windows_tested:false};
-        for(const executable of ['git',process.env.RN_CODEX_BIN||'codex']) try { checks[executable]=await command(executable,['--version'],this.store.dir); } catch(error) { checks[executable]=String(error); }
+        for(const executable of ['git',codexBinary()]) try { checks[executable]=await command(executable,['--version'],this.store.dir); } catch(error) { checks[executable]=String(error); }
         return checks;
       }
       default: throw new Error(`Unknown local method: ${method}`);
     }
   }
 }
+import { codexBinary } from './codex-binary.ts';

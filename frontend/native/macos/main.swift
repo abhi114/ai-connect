@@ -9,6 +9,29 @@ struct Row: Codable {
     let updated_at: Double
 }
 struct Snapshot: Codable { let connected: Bool; let handle: String; let pending: Int; let rows: [Row] }
+final class ApprovalOptions: NSObject {
+    let model=NSPopUpButton(),effort=NSPopUpButton()
+    let notes=NSTextView(frame:NSRect(x:0,y:0,width:500,height:100))
+    let models:[[String:Any]]
+    init(_ models:[[String:Any]]) {
+        self.models=models;super.init()
+        model.addItem(withTitle:"Codex default")
+        for m in models {model.addItem(withTitle:m["name"] as? String ?? m["model"] as? String ?? "Model")}
+        model.target=self;model.action=#selector(changeModel);changeModel()
+        notes.isRichText=false;notes.font = .systemFont(ofSize:13)
+    }
+    @objc func changeModel(){
+        effort.removeAllItems();effort.addItem(withTitle:"Model default")
+        if model.indexOfSelectedItem>0 {for value in models[model.indexOfSelectedItem-1]["efforts"] as? [String] ?? [] {effort.addItem(withTitle:value)}}
+        effort.isEnabled=model.indexOfSelectedItem>0
+    }
+    var execution:[String:Any] {
+        guard model.indexOfSelectedItem>0,let id=models[model.indexOfSelectedItem-1]["model"] as? String else{return [:]}
+        var value:[String:Any]=["model":id]
+        if effort.indexOfSelectedItem>0 {value["reasoning_effort"]=effort.titleOfSelectedItem}
+        return value
+    }
+}
 final class MenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate, NSMenuDelegate {
     let profile = Bundle.main.object(forInfoDictionaryKey: "AIConnectProfile") as? String ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".repo-network").path
     var item: NSStatusItem!
@@ -104,7 +127,7 @@ final class MenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDe
             let parent=entry(label,nil),sub=NSMenu()
             sub.addItem(entry(row.title,nil));sub.addItem(entry(row.verified ? "Signature verified" : "Trust review needed",nil))
             sub.addItem(entry("Open dashboard / choose model",#selector(dashboard)))
-            for action in row.actions {sub.addItem(entry(action == "approve" ? "Review & allow (Codex default)…" : "\(action.capitalized)…",#selector(requestAction(_:)),["id":row.id,"action":action]))}
+            for action in row.actions {sub.addItem(entry(action == "approve" ? "Choose model & approve…" : action == "owner_context" ? "Add your task instructions…" : "\(action.capitalized)…",#selector(requestAction(_:)),["id":row.id,"action":action]))}
             parent.submenu=sub;menu.addItem(parent)
         }
         if rows.isEmpty {menu.addItem(entry("No requests to show",nil))}
@@ -118,6 +141,19 @@ final class MenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDe
     func menuWillOpen(_ menu:NSMenu){menuOpen=true}
     func menuDidClose(_ menu:NSMenu){menuOpen=false}
     @objc func dashboard() {
+        // Packaged helper lives inside its owning desktop app. Open that exact
+        // installation, not a browser or an arbitrary globally registered app.
+        let desktop = Bundle.main.bundleURL.deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        if Bundle(url:desktop)?.bundleIdentifier == "io.aiconnect.desktop" {
+            let configuration = NSWorkspace.OpenConfiguration()
+            configuration.activates = true
+            configuration.arguments = ["--open-dashboard"]
+            NSWorkspace.shared.openApplication(at:desktop,configuration:configuration){_,error in
+                if let error=error {DispatchQueue.main.async{self.show("Could not open AIConnect: "+error.localizedDescription)}}
+            }
+            return
+        }
+        // Standalone CLI-installed helpers have no desktop shell.
         do {let (url,token)=try connection();var p=URLComponents(url:url,resolvingAgainstBaseURL:false)!;p.path="/";p.fragment="token=\(token)";NSWorkspace.shared.open(p.url!)}catch{show("Start the AIConnect companion, then try again.")}
     }
     @objc func toggleAlerts() {
@@ -126,18 +162,44 @@ final class MenuApp: NSObject, NSApplicationDelegate, UNUserNotificationCenterDe
     }
     @objc func requestAction(_ sender:NSMenuItem){guard let args=sender.representedObject as? [String:String],let id=args["id"],let action=args["action"] else{return};confirmAction(id,action)}
     func confirmAction(_ id:String,_ action:String) {
+        if action == "approve" {
+            rpc("list_models"){result in
+                switch result {
+                case .success(let data):
+                    let catalog=(try? JSONSerialization.jsonObject(with:data)) as? [String:Any]
+                    self.presentAction(id,action,catalog?["models"] as? [[String:Any]] ?? [])
+                case .failure(let error):self.presentAction(id,action,[],"Could not load models: "+error.localizedDescription+". Codex default is available; cancel and retry to load choices.")
+                }
+            }
+        } else {presentAction(id,action,[])}
+    }
+    func presentAction(_ id:String,_ action:String,_ models:[[String:Any]],_ modelError:String = "") {
         // Fetch fresh full text before confirmation. Core independently revalidates action/trust.
         rpc("get_request",["request_id":id]){result in
             do {
                 let obj=try JSONSerialization.jsonObject(with:result.get()) as? [String:Any]
                 guard let request=obj?["request"] as? [String:Any],let body=request["body"] as? String else {throw NSError(domain:"AIConnect",code:5)}
                 let alert=NSAlert();alert.messageText="\(action.capitalized) request?"
-                alert.informativeText=action == "approve" ? "Uses this Mac’s Codex account, default model and default reasoning. Changes stay in an isolated worktree and still need delivery review. Choose a model in the dashboard instead if needed." : "This changes the request’s state. Already produced work is retained."
-                let scroll=NSScrollView(frame:NSRect(x:0,y:0,width:500,height:230));scroll.hasVerticalScroller=true
-                let text=NSTextView(frame:scroll.bounds);text.isEditable=false;text.isRichText=false;text.string="Request \(id)\n\(request["kind"] ?? "") · \(request["repo_id"] ?? "")\n\n\(body)";text.autoresizingMask=[.width];scroll.documentView=text;alert.accessoryView=scroll
-                alert.addButton(withTitle:action.capitalized);alert.addButton(withTitle:"Back");NSApp.activate(ignoringOtherApps:true)
+                alert.messageText=action == "owner_context" ? "Add your task instructions" : "\(action.capitalized) request?"
+                alert.informativeText=action == "approve" ? "Choose how your agent runs this task. Your optional instructions are separate from the original request and stay on this Mac. Changes still need review." : action == "owner_context" ? "These instructions apply only if the queued task has not started. Running tasks are locked for this attempt." : action == "retry" ? "Returns the failed request to owner approval. The next attempt uses a fresh worktree; previous work is preserved." : "This changes the request’s state. Already produced work is retained."
+                let scroll=NSScrollView(frame:NSRect(x:0,y:0,width:500,height:180));scroll.hasVerticalScroller=true
+                let text=NSTextView(frame:scroll.bounds);text.isEditable=false;text.isRichText=false;text.string="Original request · \(id)\n\(request["kind"] ?? "") · \(request["repo_id"] ?? "")\n\n\(body)";text.autoresizingMask=[.width];scroll.documentView=text
+                let options=ApprovalOptions(models),stack=NSStackView();stack.orientation = .vertical;stack.alignment = .leading;stack.spacing=10
+                stack.addArrangedSubview(scroll);scroll.widthAnchor.constraint(equalToConstant:500).isActive=true;scroll.heightAnchor.constraint(equalToConstant:180).isActive=true
+                if action == "approve" || action == "owner_context" {
+                    if action == "approve" {
+                        let choices=NSStackView(views:[NSTextField(labelWithString:"Model"),options.model,NSTextField(labelWithString:"Effort"),options.effort]);choices.orientation = .horizontal;choices.spacing=8;stack.addArrangedSubview(choices)
+                        options.model.widthAnchor.constraint(equalToConstant:230).isActive=true
+                        if !modelError.isEmpty {stack.addArrangedSubview(NSTextField(wrappingLabelWithString:modelError))}
+                    }
+                    stack.addArrangedSubview(NSTextField(labelWithString:"Your instructions · optional · up to 8000 characters"))
+                    let notes=NSScrollView(frame:NSRect(x:0,y:0,width:500,height:100));notes.hasVerticalScroller=true;notes.borderType = .bezelBorder;notes.documentView=options.notes;options.notes.string=obj?["owner_context"] as? String ?? "";stack.addArrangedSubview(notes);notes.widthAnchor.constraint(equalToConstant:500).isActive=true;notes.heightAnchor.constraint(equalToConstant:100).isActive=true
+                }
+                let height:CGFloat=action == "approve" ? (modelError.isEmpty ? 390 : 450) : action == "owner_context" ? 330 : 180
+                stack.frame=NSRect(x:0,y:0,width:500,height:height);alert.accessoryView=stack
+                alert.addButton(withTitle:action == "owner_context" ? "Save instructions" : action.capitalized);alert.addButton(withTitle:"Back");NSApp.activate(ignoringOtherApps:true)
                 if alert.runModal() != .alertFirstButtonReturn {return}
-                self.rpc("notification_action",["request_id":id,"action":action,"confirmed":true]){result in
+                self.rpc("notification_action",["request_id":id,"action":action,"confirmed":true,"execution":options.execution,"owner_context":options.notes.string]){result in
                     switch result {case .success: self.center.removeDeliveredNotifications(withIdentifiers:[id]);self.refresh();case .failure(let error):self.show(error.localizedDescription)}
                 }
             } catch {self.show(error.localizedDescription)}
