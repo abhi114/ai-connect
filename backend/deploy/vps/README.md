@@ -1,5 +1,8 @@
 # AIConnect testing VPS — deployed 27 October 2026
 
+For the full step-by-step setup record, software downloads, port map, architectural
+decisions and maintenance boundaries, see [SERVER-SETUP.md](../../../SERVER-SETUP.md).
+
 ## Endpoint and scope
 
 - Base URL: `https://aiconnect.162-35-104-181.sslip.io`
