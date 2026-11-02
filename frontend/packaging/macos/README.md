@@ -132,3 +132,11 @@ Do not infer those results from a successful build on the developer's Mac.
 Official Codex login behavior was checked against
 https://learn.chatgpt.com/docs/developer-commands#codex-login:
 `codex login` uses browser OAuth; `codex login status` reports credential presence.
+
+### 3 November 2026 — Activity Log build
+
+Built application commit `2649793` into `dist/macos-arm64-1793651179732/AIConnect-macOS-arm64.dmg` and `dist/macos-x64-1793651179732/AIConnect-macOS-x64.dmg`. Both disk images passed integrity checks and both apps passed deep strict signature verification. Apple Silicon packaged Node/Codex and the isolated companion startup passed smoke checks, including `/activity`, authenticated log queries, startup logging, and rejected unauthenticated RPC. No real account or membership was used in these smoke checks. Intel hardware execution remains a manual test.
+
+Frontend validation: 112 tests passed, one live-Codex test skipped, TypeScript checks passed. This is a client-only release; the VPS/backend/database were not changed. Replace the installed Mac app or pull/restart the Windows companion to load the new log page and instrumentation. Preserve existing profiles. Older requests may show historical metadata, but detailed observations begin with the updated companion.
+
+SHA-256: Apple Silicon `fb4656c1e39bf128fc0edfef2f3dea9c57023fbfd97cccc4e8557716776d99e3`; Intel `3761627b2ade176d57b2b29548f1054805f49e44131d66a197c5cc19107b67da`. These are local, Git-ignored, ad-hoc development installers, not notarized distributions or uploaded GitHub release assets.
