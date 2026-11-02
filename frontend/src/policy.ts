@@ -23,7 +23,7 @@ export function authorize(state: State, request: RepoRequest): Binding {
   if (!['queued','claimed','running'].includes(request.status)) throw new Error('Request is not executable');
   if (request.kind==='change' && (!binding.changes || !repo.changes_enabled)) throw new Error('Changes disabled');
   if (request.kind==='question' && (binding.questions==='off' || !repo.questions_enabled)) throw new Error('Questions disabled');
-  if ((request.kind==='change' || binding.questions==='ask' || repo.questions_require_approval) && state.approvals[request.id]!==approvalDigest(request,state.execution_options?.[request.id],state.owner_contexts?.[request.id])) throw new Error('Exact request has not been approved locally');
+  if ((request.kind==='change' ? binding.change_mode!=='auto'||repo.changes_require_approval!==false : binding.questions==='ask'||repo.questions_require_approval) && state.approvals[request.id]!==approvalDigest(request,state.execution_options?.[request.id],state.owner_contexts?.[request.id])) throw new Error('Exact request has not been approved locally');
   requireVerified(state,request);
   return binding;
 }

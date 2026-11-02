@@ -10,15 +10,16 @@ test('private agent workspace is distinct from network and uses explicit local/d
   assert.match(js,/No automatic continuation/);
 });
 
-test('existing local repositories expose question-only approval policy controls',()=>{
+test('existing local repositories expose separate question and change approval controls',()=>{
   const project=js.slice(js.indexOf('function renderProject()'),js.indexOf('function renderComposer()'));
   assert.match(project,/if\(binding\)/);
   assert.match(project,/Repository question approval/);
   assert.match(project,/Automatically answer questions/);
-  assert.match(project,/questions==='auto'&&!confirm/);
-  assert.match(project,/rpc\('policy',\{repo_id:r.id,questions,auto_execution:/);
+  assert.match(project,/changeMode==='auto'/);
+  assert.match(project,/rpc\('policy',\{repo_id:r.id,questions,change_mode:changeMode,auto_execution:/);
   assert.doesNotMatch(project,/changes\s*:/);
-  assert.match(project,/Change requests always require approval/);
+  assert.match(project,/Every change requires owner review/);
+  assert.match(project,/Repository change approval/);assert.match(project,/auto_change_execution/);
   assert.match(project,/Existing pending requests still need approval/);
   assert.match(project,/Save repository settings/);
   assert.match(project,/approvalControls\(key,true\)/);

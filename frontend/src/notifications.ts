@@ -7,7 +7,7 @@ export function notificationView(state:State,connected:boolean){
     const owner=r.owner_member_id===state.member?.id,run=state.runs[r.id],binding=state.bindings[r.repo_id];
     const retryApproval=r.status==='approval_pending'&&run&&['failed','interrupted'].includes(run.state);
     const status=retryApproval?r.status:run?.state||r.status,verified=verifyRequest(state,r).status==='verified';
-    const pending=owner&&!!binding&&(!run||retryApproval)&&['approval_pending','queued'].includes(r.status)&&(retryApproval||!state.approvals[r.id])&&(r.status==='approval_pending'||r.kind==='change'||binding.questions!=='auto');
+    const pending=owner&&!!binding&&(!run||retryApproval)&&['approval_pending','queued'].includes(r.status)&&(retryApproval||!state.approvals[r.id])&&(r.status==='approval_pending'||(r.kind==='change'?binding.change_mode!=='auto':binding.questions!=='auto'));
     const actions:string[]=[];
     if(connected&&pending&&verified&&!binding?.paused&&(r.kind==='change'?binding?.changes:binding?.questions!=='off'))actions.push('approve');
     if(connected&&owner&&r.status==='approval_pending')actions.push('reject');

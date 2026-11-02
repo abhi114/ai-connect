@@ -70,6 +70,7 @@ Keep all three directories when distributing source: imports such as `../../shar
 | `server-switch.ts` | Temporary membership-preserving tunnel URL change |
 | `local-chats.ts` | Private chat persistence, local work/review, linked request lifecycle |
 | `local-codex.ts` | Local-turn prompt/context construction contract and Codex invocation |
+| `reviews.ts` | Project-grouped pending/delivered review model and standalone review workspace with inline file diffs and delivery actions |
 | `local-dashboard.ts` | My agent view and explicit delegation/review controls |
 
 ### Relay and shared contracts
@@ -123,7 +124,7 @@ Bearer credentials identify devices/members. Mutation idempotency keys must be r
 1. Sender resolves target owner/repo and selects question or change.
 2. Companion signs routing/content and persists the operation in its outbox before transport.
 3. Relay validates identity, capability, signature and idempotency; stores immutable task content.
-4. Questions enter approval-pending or queue per repo policy; changes require approval.
+4. Questions and changes independently enter approval-pending or queue per repo policy. Changes default to Ask; automatic change execution requires both local `change_mode: auto` and relay `changes_require_approval: false`.
 5. Owner verifies signature/trust and local binding. Explicit approval binds task content and model/effort, not an open-ended permission for future text.
 6. Scheduler waits for the canonical repository lane, claims a lease, and creates a worktree.
 7. Codex runs in read-only or workspace-write mode under separate trusted instructions and restricted network access.
@@ -243,7 +244,7 @@ Before changing a subsystem:
 2. Preserve shared protocol/signature compatibility; never change canonical signing payload casually.
 3. Add tests for happy path, denial path, restart, ambiguous network delivery and duplicate action.
 4. Keep private local history outside relay/MCP responses and treat linked results as untrusted.
-5. Keep one canonical repo lane across local/remote execution and review/delivery holds.
+5. Keep one canonical repo execution lane across local/remote work. Manual/private review and delivery hold it; completed automatic network changes park independently for review.
 6. Do not claim live model tests when using substitutes; record OS/CLI version for real runs.
 7. Document migration, backup, restart and rollback requirements; keep credentials/data out of Git.
 8. Update these three handoff files when product behavior or decisions change.

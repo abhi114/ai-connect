@@ -8,10 +8,45 @@ import { Core } from '../src/core.ts';
 import { git } from '../src/git.ts';
 import { createApp } from '../../backend/src/server.ts';
 import { localInstructions,parseLocalResponse } from '../src/local-codex.ts';
+import { reviewItems } from '../src/reviews.ts';
 
 async function wait(fn:()=>boolean){for(let i=0;i<200;i++){if(fn())return;await new Promise(r=>setTimeout(r,15));}throw Error('Wait timed out');}
 async function repository(root:string,name:string){const path=join(root,name);await mkdir(path);await git(path,'init');await writeFile(join(path,'hello.txt'),'hello\n');await git(path,'add','.');await git(path,'-c','user.name=Test','-c','user.email=test@localhost','commit','-m','initial');return path;}
 async function localFixture(){const root=await mkdtemp(join(tmpdir(),'aiconnect-local-test-'));const path=await repository(root,'project');const core=new Core(new Store(join(root,'profile')));const {binding}=await core.dispatch('local_attach',{path,name:'Private project'});const {chat}=await core.dispatch('local_create',{repo_id:binding.repo_id,title:'Private conversation'});return {root,path,core,binding,chat};}
+
+test('automatic changes execute serially and park separate worktrees for multiple pending reviews',async()=>{
+ const root=await mkdtemp(join(tmpdir(),'aiconnect-auto-change-')),path=await repository(root,'repo');
+ let clock=Date.now();const relay=createApp({rateLimit:10000,leaseMs:1000,now:()=>clock});await new Promise<void>(r=>relay.server.listen(0,'127.0.0.1',r));const server=`http://127.0.0.1:${(relay.server.address() as any).port}`;
+ let owner=new Core(new Store(join(root,'owner')));const peer=new Core(new Store(join(root,'peer')));let calls=0;
+ try{
+  await owner.dispatch('enroll',{name:'Auto changes',handle:'owner',server});await peer.dispatch('enroll',{code:(await owner.dispatch('invite')).code,handle:'peer',server});
+  const {repo}=await owner.dispatch('expose',{path,name:'repo',questions:'ask',changes:true});await peer.sync();
+  const {request:pending}=await peer.dispatch('request_change',{repo_id:repo.id,body:'Old pending request'});
+  owner.modelLoader=async()=>({models:[{model:'auto-change-model',name:'Automatic model',efforts:['medium'],isDefault:false}],fetched_at:Date.now()});
+  await owner.dispatch('policy',{repo_id:repo.id,change_mode:'auto',auto_change_execution:{model:'auto-change-model',reasoning_effort:'medium'}});await owner.sync();
+  assert.equal(owner.store.state.requests.find(r=>r.id===pending.id).status,'approval_pending');
+  owner.worker.runner=async(_r,worktree,_signal,execution)=>{calls++;assert.equal(execution?.model,'auto-change-model');await writeFile(join(worktree,'hello.txt'),'changed '+calls+'\n');return {answer:'Edited isolated greeting',sources:[]};};
+  const {request:first}=await peer.dispatch('request_change',{repo_id:repo.id,body:'First automatic task'});
+  clock++;
+  const {request:second}=await peer.dispatch('request_change',{repo_id:repo.id,body:'Second automatic task'});
+  await owner.sync();await wait(()=>owner.store.state.runs[first.id]?.state==='awaiting_review');
+  assert.equal(calls,1);assert.equal(owner.store.state.runs[second.id],undefined);
+  assert.equal(await readFile(join(path,'hello.txt'),'utf8'),'hello\n');
+  assert.deepEqual(reviewItems(await owner.dispatch('snapshot')).map(i=>i.request.id),[first.id]);
+  assert.equal((await peer.dispatch('get_request',{request_id:first.id})).result,null);
+  await owner.sync();await wait(()=>owner.store.state.runs[second.id]?.state==='awaiting_review');
+  assert.deepEqual(reviewItems(await owner.dispatch('snapshot')).map(i=>i.request.id),[first.id,second.id]);
+  clock+=2000;owner=new Core(new Store(owner.store.dir));owner.worker.runner=async()=>{throw Error('Prepared changes must never execute again after restart')};
+  await owner.sync();assert.equal(owner.connected,true);assert.deepEqual(reviewItems(await owner.dispatch('snapshot')).map(i=>i.request.id),[first.id,second.id]);
+  await owner.dispatch('deliver',{request_id:first.id});
+  assert.equal(calls,2);assert.notEqual(owner.store.state.runs[first.id].worktree,owner.store.state.runs[second.id].worktree);
+  assert.equal((await peer.dispatch('get_request',{request_id:first.id})).request.status,'review_ready');
+  await owner.dispatch('deliver',{request_id:second.id});
+  await owner.dispatch('policy',{repo_id:repo.id,change_mode:'ask'});
+  const {request:ask}=await peer.dispatch('request_change',{repo_id:repo.id,body:'Must ask again'});assert.equal(ask.status,'approval_pending');
+  const restored=new Store(owner.store.dir);assert.equal(restored.state.bindings[repo.id].change_mode,'ask');assert.equal(restored.state.bindings[repo.id].auto_change_execution?.model,'auto-change-model');
+ }finally{owner.worker.stop();peer.worker.stop();await wait(()=>!owner.worker.active.size&&!peer.worker.active.size);await relay.close();}
+});
 
 test('failed signed network work retries after fresh approval in a new worktree with old work intact',async()=>{
  const root=await mkdtemp(join(tmpdir(),'aiconnect-retry-test-')),path=await repository(root,'repo');

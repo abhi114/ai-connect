@@ -24,11 +24,16 @@ export class Worker {
     const canonical=resolve(path);
     return process.platform==='win32'?canonical.toLowerCase():canonical;
   }
+  private occupiesLane(run:Run) {
+    if(this.active.has(run.request_id))return true;
+    if(run.state==='awaiting_review'&&run.automatic_change&&!run.local_chat_id)return false;
+    return ['claiming','running','awaiting_review','delivery_pending'].includes(run.state);
+  }
   constructor(store: Store, remote: Remote, runner = runCodex) {
     this.store=store; this.remote=remote; this.runner=runner;
     this.local=new LocalChats(store,this);
     for (const run of Object.values(store.state.runs)) {
-      if(run.local_chat_id&&run.state==='awaiting_review')continue;
+      if((run.local_chat_id||run.automatic_change)&&run.state==='awaiting_review')continue;
       if (['claiming','running','awaiting_review'].includes(run.state)) {
         run.state='interrupted'; run.error='Daemon restarted. Preserved worktree; inspect it before creating a new request. No automatic execution retry.';
       }
@@ -48,6 +53,13 @@ export class Worker {
         try {
           if (!current) throw new Error('Request is no longer accessible');
           authorize(this.store.state,current);
+          // Recover the lease for already-prepared automatic changes after a
+          // restart/offline period. Never execute the model or edit again.
+          if(run.state==='awaiting_review'&&run.automatic_change&&current.status==='queued'){
+            const lease=await this.remote.mutate(`/v1/requests/${run.request_id}/claim`);
+            run.lease_token=lease.lease_token;this.store.save();
+            if(lease.request)Object.assign(current,lease.request);
+          }
           await this.remote.mutate(`/v1/requests/${run.request_id}/heartbeat`,{lease_token:run.lease_token});
         } catch {
           this.active.get(run.request_id)?.abort(); run.state='interrupted';
@@ -58,16 +70,16 @@ export class Worker {
     }
     const requests=[...(remoteAllowed?this.store.state.requests:[]).map(request=>({request,id:request.id,created_at:request.created_at})),...this.local.candidates()].sort((a,b)=>a.created_at-b.created_at||a.id.localeCompare(b.id));
     for (const candidate of requests) {
-      if('chat' in candidate){const {chat,turn}=candidate;const lane=this.lane(chat.repo_id);if(Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane&&(this.active.has(r.request_id)||['claiming','running','awaiting_review','delivery_pending'].includes(r.state))))continue;const run=this.store.state.runs[turn.id];run.state='claiming';this.store.save();void this.local.execute(chat,turn,run);continue;}
+      if('chat' in candidate){const {chat,turn}=candidate;const lane=this.lane(chat.repo_id);if(Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane&&this.occupiesLane(r)))continue;const run=this.store.state.runs[turn.id];run.state='claiming';this.store.save();void this.local.execute(chat,turn,run);continue;}
       const request=candidate.request as RepoRequest;
       if (request.status!=='queued' || this.store.state.runs[request.id]) continue;
       let binding; try { binding=authorize(this.store.state,request); } catch { continue; }
       const lane=this.lane(binding.repo_id);
       if (Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane &&
-        (this.active.has(r.request_id) || ['claiming','running','awaiting_review','delivery_pending'].includes(r.state)))) continue;
+        this.occupiesLane(r))) continue;
       const explicit=this.store.state.execution_options?.[request.id];
-      const execution=explicit??(request.kind==='question'&&binding.questions==='auto'?binding.auto_execution:undefined);
-      const run:Run={request_id:request.id,repo_id:request.repo_id,state:'claiming',execution:{...execution},owner_context:this.store.state.owner_contexts?.[request.id]||''};
+      const execution=explicit??(request.kind==='question'&&binding.questions==='auto'?binding.auto_execution:request.kind==='change'&&binding.change_mode==='auto'?binding.auto_change_execution:undefined);
+      const run:Run={request_id:request.id,repo_id:request.repo_id,state:'claiming',automatic_change:request.kind==='change'&&binding.change_mode==='auto'&&!this.store.state.approvals[request.id],execution:{...execution},owner_context:this.store.state.owner_contexts?.[request.id]||''};
       this.store.state.runs[request.id]=run; this.store.save();
       void this.execute(request,run);
     }

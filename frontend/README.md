@@ -85,7 +85,7 @@ not retained as a disabled production feature.
 
 The dashboard opens on **Home**, showing requests needing your attention,
 in-progress work, queued requests (oldest first), and work waiting on others.
-Open an item to use its existing approval/review controls in **Chats**.
+Open an approval in **Network**, or click **Changes to review** / **Reviews** for a dedicated project-grouped review workspace.
 Chats retains network messages, project/person history, filters and the composer.
 Home, Chats and Settings live in the sidebar. Collapse it to a slim navigation
 rail with the attached menu button, and use **Show/Hide details** to
@@ -153,9 +153,11 @@ senders. Approved/otherwise authorized queued requests run oldest-created first
 Aliases of the same folder and linked worktrees sharing a Git common directory
 use the same queue. This applies to both questions and changes.
 
-A change awaiting owner review, or a result awaiting delivery, keeps its queue
-occupied. Review and deliver or cancel the current request before the next one
-starts. After cancellation/authority loss, the runner must actually exit before
+Manual changes awaiting owner review and results awaiting delivery keep their queue
+occupied. Automatically prepared network changes park in separate worktrees and release
+the execution lane, allowing several pending reviews for the same project. For a held
+lane, review and deliver or cancel the current request before the next one starts.
+After cancellation/authority loss, the runner must actually exit before
 another request starts. Other repositories remain independent. Waiting requests
 retain their existing `Queued` dashboard status and are not claimed early.
 
@@ -310,7 +312,7 @@ senders can keep using the existing protocol without updating the relay.
 
 Reference: https://learn.chatgpt.com/docs/app-server#list-models-modellist
 
-Question policy defaults to `ask`. Use `--questions auto` only for repositories and network peers you trust. Changes always require local approval of the exact sender, repo, title, body, constraints and base reference, even when another device approved the server-side request.
+Question policy defaults to `ask`. Use `--questions auto` only for repositories and network peers you trust. Change execution also defaults to Ask. In the owner's repository controls, choose Ask, Automatic, or Disabled independently for changes. Automatic changes use the saved change-specific model/effort; both the local binding and relay policy must allow automatic execution. Existing pending approvals and manual retries still need approval. Every prepared change requires owner review before commit and delivery.
 
 ```sh
 npm run cli -- request show REQUEST_ID
@@ -455,3 +457,13 @@ This requires the updated backend `/v1/requests/:id/retry` endpoint and updated 
 The macOS menu-bar approval dialog loads the local Codex model catalog and offers the model's supported reasoning efforts. Optional owner instructions (up to 8000 characters) are stored separately from the signed peer request, included in the local approval digest, and supplied to the worker as owner context within existing task and sandbox limits. They are sent to Codex for execution but are not uploaded to the relay as request metadata. The owner can also enter them in dashboard approval controls.
 
 Queued automatic questions offer **Add your task instructions…** in the menu bar. This does not pause the queue: saving is rejected if the worker has already started. Running tasks cannot accept late instructions in this implementation. Ask mode is the reliable choice when every task needs personal input. The active run records the instructions used for that attempt; retries retain previous run snapshots. Updating the native interface requires rebuilding and installing the macOS app.
+
+## Automatic changes and the Reviews workspace
+
+On an owned shared project's **Project access** panel, set **Change request approval** independently to Ask, Automatic, or Disabled. Ask is the default for existing repositories. Automatic mode uses its own saved model and reasoning settings; enable it through **Save repository settings**. It applies to new requests only. Existing pending approvals and manual retries still require approval. Both the relay and companion enforce the effective policy; a client cannot bypass a relay that still requires approval.
+
+Automatic changes execute one at a time per canonical Git repository. Each request creates its own worktree from the current original-checkout HEAD. When editing finishes, the worktree parks for review and the next request can run, so one project may accumulate multiple independent reviews. The companion renews these requests' leases; after restart or lease expiry it may reclaim a prepared change solely for review/delivery, without executing the model again. Policy revocation, a conflicting owner device, or lost authority holds work for inspection instead. Manual changes, private-chat edits, and pending delivery retain their existing queue holds.
+
+Click **Home → Changes to review** or the sidebar **Reviews** tab. Cards are grouped and filterable by project. Select a card to inspect its original task, owner instructions, agent summary, execution settings, timeline, branch, worktree folder, changed files and inline diffs. **Commit & send reviewed change** commits only that selected worktree and delivers its result; it never merges or pushes. **Delivered changes** retains access to delivered summaries, and the requester can acknowledge receipt. A requester on another computer sees the delivered summary rather than local filesystem paths/diffs. Private local edits are included with their existing local-review action.
+
+This feature requires updated backend and client code; rebuilding/reinstalling the macOS app is necessary for an installed desktop copy. No database schema migration is needed: the optional relay policy field defaults to requiring approval on old repo records. Do not treat independently prepared branches as cumulative changes: integrate them deliberately in Git after review.

@@ -12,7 +12,7 @@ export interface NetworkMessagePage { messages: NetworkMessage[]; next_before: n
 export interface Member { id: string; network_id: string; handle: string; display_name: string; role: 'admin'|'member'; revoked_at: number|null; online?: boolean }
 export interface Device { id: string; member_id: string; public_label: string; last_seen_at: number; revoked_at: number|null }
 export interface Identity { token: string; member: Member; device: Device; network: Network }
-export interface Repo { id: string; network_id: string; owner_member_id: string; slug: string; description: string; tags: string[]; questions_enabled: boolean; changes_enabled: boolean; questions_require_approval: boolean; availability: 'active'|'paused'; revoked_at: number|null }
+export interface Repo { id: string; network_id: string; owner_member_id: string; slug: string; description: string; tags: string[]; questions_enabled: boolean; changes_enabled: boolean; changes_require_approval?: boolean; questions_require_approval: boolean; availability: 'active'|'paused'; revoked_at: number|null }
 export interface RepoRequest { id: string; network_id: string; repo_id: string; sender_member_id: string; owner_member_id: string; kind: RequestKind; status: RequestStatus; title: string; body: string; base_ref: string|null; constraints: string[]; created_at: number; updated_at: number; version: number }
 export interface SourceReference { path: string; line?: number; end_line?: number }
 export interface QuestionResult { kind: 'question_result'; answer: string; base_commit: string; sources: SourceReference[] }

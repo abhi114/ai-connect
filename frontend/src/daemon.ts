@@ -22,7 +22,7 @@ export async function startDaemon(dir?:string,port=Number(process.env.RN_PORT||4
     const origin=`http://127.0.0.1:${webPort}`;
     if(!socket && req.headers.host!==`127.0.0.1:${webPort}`)return send(403,{error:'Invalid Host'});
     if(req.headers.origin && req.headers.origin!==origin)return send(403,{error:'Origin rejected'});
-    if(!socket && req.method==='GET' && ['/','/network','/repos','/inbox','/settings','/app.js','/style.css'].includes(req.url)) {
+    if(!socket && req.method==='GET' && ['/','/network','/repos','/inbox','/reviews','/settings','/app.js','/style.css'].includes(req.url)) {
       res.writeHead(200,{'Content-Type':req.url==='/app.js'?'text/javascript':req.url==='/style.css'?'text/css':'text/html','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"});
       return res.end(req.url==='/app.js'?js:req.url==='/style.css'?css+onboardingCss:html);
     }

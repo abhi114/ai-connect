@@ -179,6 +179,8 @@ export class Core {
       case 'policy': {
         const binding=state.bindings[args.repo_id]; if(!binding) throw new Error('Unknown local repo binding');
         const autoExecution=args.auto_execution===undefined?undefined:validateExecution(args.auto_execution,args.auto_execution?.model?await this.models(true):undefined);
+        const autoChangeExecution=args.auto_change_execution===undefined?undefined:validateExecution(args.auto_change_execution,args.auto_change_execution?.model?await this.models(true):undefined);
+        if(args.change_mode!==undefined){if(!['off','ask','auto'].includes(args.change_mode))throw Error('change_mode must be off, ask or auto');binding.changes=args.change_mode!=='off';binding.change_mode=args.change_mode==='auto'?'auto':'ask';}
         if(args.questions!==undefined) { if(!['off','ask','auto'].includes(args.questions)) throw new Error('questions must be off, ask, or auto'); binding.questions=args.questions; }
         if(args.changes!==undefined) binding.changes=!!args.changes;
         if(args.paused!==undefined) binding.paused=!!args.paused;
@@ -187,9 +189,10 @@ export class Core {
           binding.allowed_paths=args.allowed_paths;
         }
         if(autoExecution!==undefined)binding.auto_execution=autoExecution;
+        if(autoChangeExecution!==undefined)binding.auto_change_execution=autoChangeExecution;
         this.store.save();
         if(binding.paused) for(const run of Object.values(state.runs)) if(run.repo_id===binding.repo_id) this.worker.stop(run.request_id);
-        return this.remote.durable(`/v1/repos/${binding.repo_id}`,{availability:binding.paused?'paused':'active',questions_enabled:binding.questions!=='off',questions_require_approval:binding.questions==='ask',changes_enabled:binding.changes},'PATCH');
+        return this.remote.durable(`/v1/repos/${binding.repo_id}`,{availability:binding.paused?'paused':'active',questions_enabled:binding.questions!=='off',questions_require_approval:binding.questions==='ask',changes_enabled:binding.changes,changes_require_approval:binding.change_mode!=='auto'},'PATCH');
       }
       case 'ask_repo': case 'request_change': {
         if(typeof args.repo_id!=='string' || !args.repo_id) throw new Error('A stable repo_id is required');

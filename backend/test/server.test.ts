@@ -28,6 +28,21 @@ async function setup(databasePath = ':memory:', options: ServerOptions = {}) {
 }
 const answer = {kind:'question_result',answer:'Tax is calculated in checkout.',base_commit:'a'.repeat(40),sources:[{path:'src/tax.ts',line:4}]};
 
+test('automatic change policy is owner-only, defaults to ask, and tightening gates unapproved work',async t=>{
+ const f=await setup();t.after(()=>f.app.close());const owner=await f.create(),sender=await f.joinMember(owner),repo=await f.publish(owner);
+ assert.equal(repo.changes_require_approval,true);
+ const {request:old}=await f.request(sender,repo,'change');assert.equal(old.status,'approval_pending');
+ assert.equal((await f.api('/v1/repos/'+repo.id,{changes_require_approval:false},sender.token,'PATCH')).status,403);
+ assert.equal((await f.api('/v1/repos/'+repo.id,{changes_require_approval:false},owner.token,'PATCH')).status,200);
+ assert.equal((await f.api('/v1/requests/'+old.id,undefined,owner.token)).request.status,'approval_pending');
+ const {request:queued}=await f.request(sender,repo,'change');assert.equal(queued.status,'queued');
+ const {request:running}=await f.request(sender,repo,'change');const lease=await f.api('/v1/requests/'+running.id+'/claim',{},owner.token);assert.equal(lease.status,200);
+ await f.api('/v1/repos/'+repo.id,{changes_require_approval:true},owner.token,'PATCH');
+ assert.equal((await f.api('/v1/requests/'+queued.id,undefined,owner.token)).request.status,'approval_pending');
+ assert.equal((await f.api('/v1/requests/'+queued.id+'/claim',{},owner.token)).status,409);
+ assert.equal((await f.api('/v1/requests/'+running.id,undefined,owner.token)).request.status,'cancelled');
+});
+
 test('manual retry retains history, requires fresh approval, and fences the old worker',async t=>{
   const f=await setup();t.after(()=>f.app.close());
   const owner=await f.create(),sender=await f.joinMember(owner),other=await f.joinMember(owner,'other');

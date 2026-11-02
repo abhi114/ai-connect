@@ -59,5 +59,10 @@ const {chat:localChat}=await alice.dispatch('local_create',{repo_id:published.id
 const {turn:localTurn}=await alice.dispatch('local_send',{chat_id:localChat.id,body:'Explain the checkout flow before we ask the backend team.',kind:'question'});
 for(let i=0;i<100&&alice.store.state.runs[localTurn.id]?.state!=='complete';i++)await new Promise(resolve=>setTimeout(resolve,30));
 const timer=setInterval(()=>{void bob.sync();void carol.sync()},10000);
+if(process.env.RN_QA_REVIEWS==='1'){
+ await alice.dispatch('policy',{repo_id:published.id,change_mode:'auto',auto_change_execution:{model:'qa-fast',reasoning_effort:'medium'}});
+ const {request}=await bob.dispatch('request_change',{repo_id:published.id,body:'Prepare documentation changes in a separate worktree for owner review.'});
+ await alice.sync();for(let i=0;i<100&&alice.store.state.runs[request.id]?.state!=='awaiting_review';i++)await new Promise(r=>setTimeout(r,30));
+}
 console.log(JSON.stringify({preview_url:daemon.url,guest_url:guest.url,fixture_directory:dir}));
 for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{clearInterval(timer);bob.worker.stop();carol.worker.stop();void Promise.all([daemon.stop(),guest.stop()]).then(()=>relay.close()).then(()=>process.exit(0));});

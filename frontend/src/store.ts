@@ -11,9 +11,12 @@ export interface Binding {
   repo_id: string; path: string; git_dir: string; name: string;
   questions: 'auto' | 'ask' | 'off'; changes: boolean; paused: boolean;
   auto_execution?: ExecutionOptions;
+  change_mode?: 'ask'|'auto';
+  auto_change_execution?: ExecutionOptions;
   allowed_paths: string[]; max_diff_bytes: number;
 }
 export interface Run {
+  automatic_change?: boolean;
   owner_context?: string;
   activity?: import('./activity.ts').Activity[];
   activity_truncated?: boolean; started_at?:number; finished_at?:number;

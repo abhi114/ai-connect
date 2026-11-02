@@ -37,17 +37,18 @@ Windows folder reveal and live Codex event compatibility still need on-device ch
 | Discovery | Catalog search/name/owner resolution | Deterministic metadata matching, not relay-side semantic source indexing |
 | General messages | Signed network-wide human chat with history | Visible to active members including new members; does not launch AI |
 | Remote questions | Signed asynchronous read-only repo analysis and sourced answer | Repo off/ask/auto policy and trust checks apply |
-| Remote changes | Approve scope/model, run isolated worktree, review diff, commit/deliver | No automatic push, merge, or hosted PR |
+| Remote changes | Per-repo Ask/Automatic/Disabled execution; independent automatic model/effort; isolated worktree; mandatory review before commit/delivery | Default Ask; existing pending approvals and retries stay gated; no automatic push or merge |
 | Model/effort | Local Codex catalog discovery and validated per-request selection | Catalog visibility isn't a guarantee of quota/access at execution time |
-| Automatic questions | Per-repo ask/auto controls and stored model/effort defaults | Changes stay approval-gated; existing pending requests stay pending |
+| Automatic questions | Per-repo ask/auto controls and stored model/effort defaults | Change execution has its own Ask/Automatic policy; existing pending requests stay pending |
 | Repository scheduling | Shared local/remote FIFO eligibility, canonical Git-dir lanes | One active task per repo including aliases; independent repos concurrent |
-| Review holds | Unreviewed edits and pending remote delivery hold a repo lane | Idle chats and awaiting linked replies do not reserve execution capacity |
+| Review holds | Manual/private edits and pending delivery hold a repo lane; completed automatic changes park independently | Only one execution per repo at a time; parked auto reviews can coexist |
 | Persistence | Profile state, outbox, approvals, runs, bindings, trust, local chats | Local file storage is sensitive and not an encrypted vault |
 | Retry behavior | Durable outgoing writes and stable idempotency/signature IDs | Retry transport, not arbitrary agent execution; permanent rejection is distinct |
 | Lease handling | Claim, heartbeat, expiry, fenced result acceptance | Lease cannot forcibly kill an OS process; companion must stop it |
-| Home | Latest activity, approvals/reviews, working/queued/waiting, today's changes, issues | No invented goals/calendar/task-management subsystem |
+| Home | Latest activity, approvals/reviews, working/queued/waiting, today's changes, issues; clickable review count | Review cards open the dedicated Reviews workspace |
 | Network UI | Project/person navigation, chat history, filters, request detail and signatures | Participant-only requests remain private even in “Everything” |
 | Layout | Warm light palette, sidebar tabs/collapse, compact chat chrome, Settings view | Local browser UI, not a hosted web dashboard |
+| Reviews workspace | Project-grouped pending cards, delivered-history view, inline request/summary, changed files/diffs, branch/worktree, commit/delivery and receipt actions | Local files are visible on the owner computer only; no chat scrolling needed |
 | Concise MCP | Eight network tools, bounded wait, paginated/short previews, detailed fetch | Full dashboard detail retained; no private chat or approval tools in MCP |
 | Signatures | Ed25519 requests, messages, results; client and server verification | Authenticity/integrity, not E2EE |
 | Trust | First-use pins, fingerprint confirm, local blocking, changed/new device hold | First contact depends on relay roster; compare fingerprints independently |

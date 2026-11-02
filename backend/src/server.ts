@@ -278,7 +278,7 @@ export function createApp(options: ServerOptions = {}) {
     }
     match = path.match(/^\/v1\/repos\/([^/]+)$/);
     if ((method === 'POST' && path === '/v1/repos') || (method === 'PATCH' && match)) {
-      allowed(body, ['slug','description','tags','questions_enabled','changes_enabled','questions_require_approval','availability']);
+      allowed(body, ['slug','description','tags','questions_enabled','changes_enabled','changes_require_approval','questions_require_approval','availability']);
       const previous = match ? repoById(match[1], auth) : undefined;
       if (previous && previous.owner_member_id !== member.id) fail(403, 'owner_required', 'Repository owner required');
       const slug = body.slug === undefined && previous ? previous.slug : str(body, 'slug', 80).toLowerCase();
@@ -286,16 +286,16 @@ export function createApp(options: ServerOptions = {}) {
       if (one('SELECT id FROM repos WHERE owner_member_id=? AND slug=? AND id<>?', member.id, slug, previous?.id ?? '')) fail(409, 'repo_exists', 'Repository slug already exists for this owner');
       const availability = body.availability ?? previous?.availability ?? 'active';
       if (!['active','paused'].includes(availability)) fail(400, 'invalid_input', 'Invalid availability');
-      const repo: Repo = {id: previous?.id ?? id('rep'), network_id: member.network_id, owner_member_id: member.id, slug, description: body.description === undefined ? previous?.description ?? '' : str(body, 'description', 2000), tags: body.tags === undefined ? previous?.tags ?? [] : strings(body.tags, 'tags'), questions_enabled: bool(body, 'questions_enabled', previous?.questions_enabled ?? false), changes_enabled: bool(body, 'changes_enabled', previous?.changes_enabled ?? false), questions_require_approval: bool(body, 'questions_require_approval', previous?.questions_require_approval ?? true), availability, revoked_at: null};
+      const repo: Repo = {id: previous?.id ?? id('rep'), network_id: member.network_id, owner_member_id: member.id, slug, description: body.description === undefined ? previous?.description ?? '' : str(body, 'description', 2000), tags: body.tags === undefined ? previous?.tags ?? [] : strings(body.tags, 'tags'), questions_enabled: bool(body, 'questions_enabled', previous?.questions_enabled ?? false), changes_enabled: bool(body, 'changes_enabled', previous?.changes_enabled ?? false), changes_require_approval: bool(body, 'changes_require_approval', previous?.changes_require_approval ?? true), questions_require_approval: bool(body, 'questions_require_approval', previous?.questions_require_approval ?? true), availability, revoked_at: null};
       run('INSERT INTO repos VALUES (?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET slug=excluded.slug,payload=excluded.payload', repo.id, repo.network_id, member.id, slug, JSON.stringify(repo));
       for (const row of all("SELECT payload FROM requests WHERE repo_id=? AND status IN ('claimed','running')", repo.id)) {
         const request: RepoRequest = JSON.parse(row.payload);
-        if (availability !== 'active' || !(request.kind === 'question' ? repo.questions_enabled : repo.changes_enabled) || (request.kind === 'question' && repo.questions_require_approval && !one("SELECT request_id FROM approvals WHERE request_id=? AND decision='approved'", request.id))) saveRequest(request, 'cancelled', member.id, 'request.cancelled', {reason: 'repo_policy_changed'});
+        if (availability !== 'active' || !(request.kind === 'question' ? repo.questions_enabled : repo.changes_enabled) || ((request.kind === 'question' ? repo.questions_require_approval : repo.changes_require_approval !== false) && !one("SELECT request_id FROM approvals WHERE request_id=? AND decision='approved'", request.id))) saveRequest(request, 'cancelled', member.id, 'request.cancelled', {reason: 'repo_policy_changed'});
       }
-      if (repo.questions_require_approval) {
+      if (repo.questions_require_approval || repo.changes_require_approval !== false) {
         for (const row of all("SELECT r.payload FROM requests r LEFT JOIN approvals a ON a.request_id=r.id WHERE r.repo_id=? AND r.status='queued' AND a.request_id IS NULL", repo.id)) {
           const request: RepoRequest = JSON.parse(row.payload);
-          if (request.kind === 'question') saveRequest(request, 'approval_pending', member.id, 'request.approval_required');
+          if (request.kind === 'question' ? repo.questions_require_approval : repo.changes_require_approval !== false) saveRequest(request, 'approval_pending', member.id, 'request.approval_required');
         }
       }
       event(member.network_id, member.id, previous ? 'repo.updated' : 'repo.published', {repo}); return {status: previous ? 200 : 201, body: {repo}};
@@ -308,7 +308,7 @@ export function createApp(options: ServerOptions = {}) {
       const kind = body.kind;
       if (repo.revoked_at || repo.availability !== 'active' || !(kind === 'question' ? repo.questions_enabled : repo.changes_enabled) || !one('SELECT id FROM members WHERE id=? AND revoked_at IS NULL', repo.owner_member_id)) fail(409, 'repo_unavailable', 'Repository is unavailable or capability disabled');
       const base = str(body, 'base_ref', 240, true) || null; if (base) safeRef(base);
-      const request: RepoRequest = {id: id('req'), network_id: member.network_id, repo_id: repo.id, sender_member_id: member.id, owner_member_id: repo.owner_member_id, kind, status: kind === 'change' || repo.questions_require_approval ? 'approval_pending' : 'queued', title: str(body, 'title', 200), body: str(body, 'body', 16000), base_ref: base, constraints: strings(body.constraints, 'constraints'), created_at: now(), updated_at: now(), version: 1};
+      const request: RepoRequest = {id: id('req'), network_id: member.network_id, repo_id: repo.id, sender_member_id: member.id, owner_member_id: repo.owner_member_id, kind, status: (kind === 'change' ? repo.changes_require_approval !== false : repo.questions_require_approval) ? 'approval_pending' : 'queued', title: str(body, 'title', 200), body: str(body, 'body', 16000), base_ref: base, constraints: strings(body.constraints, 'constraints'), created_at: now(), updated_at: now(), version: 1};
       if(body.signature){request.id=body.signature.id;Object.assign(request,{signature:body.signature});}
       signed(auth,body.signature,'request',requestPayload(request),request.id);
       run('INSERT INTO requests VALUES (?,?,?,?,?,?,?)', request.id, member.network_id, repo.id, member.id, repo.owner_member_id, request.status, JSON.stringify(request));
@@ -343,7 +343,7 @@ export function createApp(options: ServerOptions = {}) {
       } else if (action === 'claim') {
         allowed(body, []); owner(request, auth); const repo = activeRepo(request, auth);
         if (request.status !== 'queued') fail(409, 'not_claimable', 'Request is not queued');
-        if ((request.kind === 'change' || repo.questions_require_approval) && !one("SELECT request_id FROM approvals WHERE request_id=? AND decision='approved'", request.id)) fail(409, 'approval_required', 'Owner approval required');
+        if ((request.kind === 'change' ? repo.changes_require_approval !== false : repo.questions_require_approval) && !one("SELECT request_id FROM approvals WHERE request_id=? AND decision='approved'", request.id)) fail(409, 'approval_required', 'Owner approval required');
         const old = one('SELECT * FROM leases WHERE request_id=?', request.id);
         const token = randomBytes(32).toString('base64url'); const expires = now()+leaseMs; const attempt = (old?.attempt ?? 0)+1;
         run('INSERT INTO leases VALUES (?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET device_id=excluded.device_id,token_hash=excluded.token_hash,expires_at=excluded.expires_at,attempt=excluded.attempt', request.id, auth.device.id, hash(token), expires, attempt);
