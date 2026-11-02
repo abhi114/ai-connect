@@ -49,6 +49,7 @@ Windows folder reveal and live Codex event compatibility still need on-device ch
 | Network UI | Project/person navigation, chat history, filters, request detail and signatures | Participant-only requests remain private even in “Everything” |
 | Layout | Warm light palette, sidebar tabs/collapse, compact chat chrome, Settings view | Local browser UI, not a hosted web dashboard |
 | Reviews workspace | Project-grouped pending cards, delivered-history view, inline request/summary, changed files/diffs, branch/worktree, commit/delivery and receipt actions | Local files are visible on the owner computer only; no chat scrolling needed |
+| Activity log | Day-grouped local journal; date/type/person/project/outcome/location filters; blocked scope/API access, worker, approval, review, trust, routine and connection events | Defaults to this computer; relay and historical metadata labeled separately; latest 5,000 detailed entries retained; not an OS-wide file-read trace |
 | Concise MCP | Eight network tools, bounded wait, paginated/short previews, detailed fetch | Full dashboard detail retained; no private chat or approval tools in MCP |
 | Signatures | Ed25519 requests, messages, results; client and server verification | Authenticity/integrity, not E2EE |
 | Trust | First-use pins, fingerprint confirm, local blocking, changed/new device hold | First contact depends on relay roster; compare fingerprints independently |

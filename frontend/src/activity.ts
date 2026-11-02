@@ -1,4 +1,5 @@
 import type { Store, Run } from './store.ts';
+import { appendAudit,auditRun,requestAuditContext } from './audit.ts';
 
 export interface Activity {id:string;at:number;kind:'command'|'files'|'note'|'status';text:string;state:string}
 export type ActivitySink=(event:unknown)=>void;
@@ -17,6 +18,11 @@ export function publicActivity(raw:any):Omit<Activity,'at'>|undefined {
   if(i.type==='agent_message'&&(!i.channel||i.channel==='commentary')&&typeof i.text==='string'&&!/^\s*(?:\{|```)/.test(i.text))return {id:i.id,kind:'note',text:i.text.replace(/(?:Bearer\s+\S+|(?:sk-|ghp_)[A-Za-z0-9_-]+|[A-Z_]*(?:TOKEN|SECRET|PASSWORD|API_KEY)\s*[=:]\s*\S+)/gi,'[redacted]').slice(0,800),state};
 }
 export function recordActivity(store:Store,run:Run):ActivitySink {
+  const context=requestAuditContext(store.state,run.request_id);
+  auditRun(store,run,'worker.started','Agent started in an isolated worktree','allowed',(context.kind==='change'?'Workspace-write permission':'Read-only permission')+(run.automatic_change?' · automatic change policy':'')+(run.execution?.model?' · model '+run.execution.model:''));
   run.started_at=Date.now();run.activity=[];store.save();
-  return raw=>{const value=publicActivity(raw);if(!value)return;const items=run.activity!;const old=items.find(i=>i.id===value.id);if(old)Object.assign(old,value);else if(items.length<100)items.push({...value,at:Date.now()});else run.activity_truncated=true;store.save();};
+  return raw=>{const value=publicActivity(raw);if(!value)return;const items=run.activity!;const old=items.find(i=>i.id===value.id);if(old)Object.assign(old,value);else if(items.length<100)items.push({...value,at:Date.now()});else run.activity_truncated=true;
+    if(value.kind==='command'&&value.state!=='running')appendAudit(store,{...context,category:'execution',action:'command.finished',summary:value.text,outcome:value.state==='failed'?'failed':'completed',actor:'system',key:'command:'+run.request_id+':'+value.id+':'+run.worktree});
+    if(value.kind==='files'&&value.state!=='running')appendAudit(store,{...context,category:'access',action:'files.reported',summary:value.text,outcome:'info',actor:'system',detail:'File-change event reported by Codex; inspect the worktree diff to verify the exact files.',key:'files:'+run.request_id+':'+value.id+':'+run.worktree});
+    store.save();};
 }

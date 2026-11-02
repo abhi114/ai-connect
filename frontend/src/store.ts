@@ -29,6 +29,9 @@ export interface Run {
   error?: string; result?: unknown; delivery_key?: string;
 }
 export interface State {
+  audit_log?: import('./audit.ts').AuditEntry[];
+  audit_dropped?: number;
+  audit_warning?: string;
   owner_contexts?: Record<string,string>;
   run_attempts?: Record<string,Run[]>;
   routines?: Record<string,import('./routines.ts').Routine>;

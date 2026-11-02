@@ -9,6 +9,7 @@ import { approvedPath, git, inspectDiff, makeWorktree, verifyBinding } from './g
 import { runCodex } from './codex.ts';
 import { signOutgoing, requireVerified } from './trust.ts';
 import { LocalChats } from './local-chats.ts';
+import { appendAudit,auditRun,auditReason,requestAuditContext } from './audit.ts';
 
 export class Worker {
   store: Store; remote: Remote; active = new Map<string,AbortController>();
@@ -73,7 +74,10 @@ export class Worker {
       if('chat' in candidate){const {chat,turn}=candidate;const lane=this.lane(chat.repo_id);if(Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane&&this.occupiesLane(r)))continue;const run=this.store.state.runs[turn.id];run.state='claiming';this.store.save();void this.local.execute(chat,turn,run);continue;}
       const request=candidate.request as RepoRequest;
       if (request.status!=='queued' || this.store.state.runs[request.id]) continue;
-      let binding; try { binding=authorize(this.store.state,request); } catch { continue; }
+      let binding; try { binding=authorize(this.store.state,request); } catch(error) {
+        if(request.owner_member_id===this.store.state.member?.id&&this.store.state.bindings[request.repo_id])appendAudit(this.store,{...requestAuditContext(this.store.state,request.id),category:'access',action:'execution.blocked',summary:'Local execution held by access checks',outcome:'blocked',actor:'peer',actor_id:request.sender_member_id,detail:auditReason(error),key:'held:'+request.id+':'+auditReason(error)});
+        continue;
+      }
       const lane=this.lane(binding.repo_id);
       if (Object.values(this.store.state.runs).some(r=>this.lane(r.repo_id)===lane &&
         this.occupiesLane(r))) continue;
@@ -112,10 +116,11 @@ export class Worker {
         run.state='delivery_pending'; this.store.save(); await this.deliverResult(run);
       } else {
         const diff=await inspectDiff(binding,run.worktree!,run.base_commit!);
-        run.diff_summary=diff.summary; run.state='awaiting_review'; this.store.save();
+        auditRun(this.store,run,'files.validated','Changed files passed local scope checks','allowed','Changed files: '+diff.paths.join(', '));
+        run.diff_summary=diff.summary; run.state='awaiting_review'; this.store.save();auditRun(this.store,run,'change.prepared','Change prepared; owner review required','completed','Work remains in its isolated worktree; no delivery or merge has occurred.');
       }
     } catch (error) {
-      run.state='failed'; run.error=String(error instanceof Error?error.message:error); this.store.save();
+      run.state='failed'; run.error=String(error instanceof Error?error.message:error); this.store.save();auditRun(this.store,run,'worker.failed','Agent execution failed or was held for inspection','failed',auditReason(error));
       if(run.lease_token) {
         try { await this.remote.mutate(`/v1/requests/${request.id}/fail`,{lease_token:run.lease_token,code:'local_execution_failed',message:'Local execution failed or was held for owner inspection; see owner dashboard.'}); } catch {}
       }
@@ -146,7 +151,7 @@ export class Worker {
       const path=`/v1/requests/${run.request_id}/complete`;
       run.result_signature ||= signOutgoing(this.store,path,{result:run.result}).signature;this.store.save();
       await this.remote.mutate(path,{lease_token:run.lease_token,result:run.result,signature:run.result_signature,idempotency_key:run.delivery_key});
-      run.state='complete'; this.store.save();
+      run.state='complete'; this.store.save();auditRun(this.store,run,'result.delivered','Agent result delivered to the requester','completed');
     } catch(error) {
       run.error='Result delivery held: '+(error instanceof Error?error.message:String(error));this.store.save();
       if(error instanceof RemoteError && error.status<500 && error.status!==429) {

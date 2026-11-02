@@ -71,6 +71,7 @@ Keep all three directories when distributing source: imports such as `../../shar
 | `local-chats.ts` | Private chat persistence, local work/review, linked request lifecycle |
 | `local-codex.ts` | Local-turn prompt/context construction contract and Codex invocation |
 | `reviews.ts` | Project-grouped pending/delivered review model and standalone review workspace with inline file diffs and delivery actions |
+| `audit.ts` / `activity-log.ts` | Bounded private local event journal, filtered/paginated activity RPC and day-grouped Activity log page; source/evidence distinction and scoped access checks |
 | `local-dashboard.ts` | My agent view and explicit delegation/review controls |
 
 ### Relay and shared contracts

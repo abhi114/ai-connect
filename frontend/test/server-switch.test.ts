@@ -40,7 +40,9 @@ test('different registered key is never replaced during URL switching',async t=>
   await core.remote.mutate('/v1/keys',{public_key:other.public_key,proof:signData(other.private_key,data)});
   core.store.state.server='http://127.0.0.1:1';core.store.save();const before=structuredClone(core.store.state);
   await assert.rejects(core.dispatch('change_server',{server,confirmed:true}),/different/);
-  assert.deepEqual(core.store.state,before);assert.deepEqual(new Store(core.store.dir).state,before);
+  const {audit_log,...after}=core.store.state;const {audit_log:persistedAudit,...persisted}=new Store(core.store.dir).state;
+  assert.deepEqual(after,before);assert.deepEqual(persisted,before);
+  assert.equal(audit_log?.at(-1)?.action,'change_server');assert.equal(audit_log?.at(-1)?.outcome,'blocked');assert.deepEqual(persistedAudit,audit_log);
   const response=await fetch(server+'/v1/keys',{headers:{Authorization:`Bearer ${identity.token}`}});
   assert.equal(((await response.json()) as any).keys[0].public_key,other.public_key);
 });

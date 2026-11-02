@@ -15,8 +15,12 @@ try{
   assert.match((await run(codex,['--version'],{env})).stdout,/0\.164\.0/);
   const result=await call('start');started=true;assert.equal(result.enrolled,false);
   const url=new URL(result.url);assert.equal(url.pathname,'/settings');
-  const response=await fetch(url);assert.equal(response.status,200);assert.match(await response.text(),/Join your team/);
+  const response=await fetch(url);assert.equal(response.status,200);const html=await response.text();assert.match(html,/Join your team/);assert.match(html,/id="tab-log"/);
   assert.equal((await fetch(new URL('/rpc',url),{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status,401);
-  console.log('PASS: bundled Node/Codex, isolated companion start, first-run Settings, authenticated dashboard boundary.');
+  assert.equal((await fetch(new URL('/activity',url))).status,200);
+  const audit=await fetch(new URL('/rpc',url),{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+url.hash.slice('#token='.length)},body:JSON.stringify({method:'activity_log',args:{scope:'computer'}})});
+  assert.equal(audit.status,200);const log=(await audit.json()).result;
+  assert.ok(log.entries.some(e=>e.action==='companion.started'));assert.ok(log.entries.some(e=>e.action==='companion.access_blocked'));
+  console.log('PASS: bundled Node/Codex, isolated companion start, first-run Settings, dashboard authentication, Activity Log route and authenticated audit query.');
 }finally{if(started)await call('stop');}
 console.log('Isolated smoke profile retained under .cache; no real credentials or enrollment used.');

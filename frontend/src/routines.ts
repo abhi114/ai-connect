@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Store } from './store.ts';
 import type { LocalChats } from './local-chats.ts';
 import type { ExecutionOptions } from './models.ts';
+import { appendAudit,auditReason } from './audit.ts';
 
 export interface Schedule {frequency:'hourly'|'daily'|'weekdays'|'weekly';time:string;day:number;timezone:string}
 export interface Routine {id:string;name:string;prompt:string;repo_id:string;schedule:Schedule;execution:ExecutionOptions;enabled:boolean;next_at:number|null;last_turn_id?:string;history:{at:number;reason:string;chat_id?:string;turn_id?:string;error?:string}[]}
@@ -47,8 +48,8 @@ export class Routines {
     // Reserve durably before creating a chat. A crash may leave a held record,
     // but restarting must never repeat the same scheduled occurrence.
     const record:Routine['history'][number]={at:this.now(),reason,error:'Run reserved; if interrupted before enqueue, inspect and use Run now.'};r.history.unshift(record);r.history=r.history.slice(0,30);this.store.save();
-    try{const c=this.chats.create(r.repo_id,r.name+' · '+new Date(record.at).toISOString());record.chat_id=c.id;this.store.save();const t=this.chats.enqueue(c.id,r.prompt,'question',r.execution,false);record.turn_id=t.id;r.last_turn_id=t.id;delete record.error;this.store.save();return {chat_id:c.id,turn_id:t.id};}
-    catch(e){record.error=e instanceof Error?e.message:String(e);this.store.save();throw e;}
+    try{const c=this.chats.create(r.repo_id,r.name+' · '+new Date(record.at).toISOString());record.chat_id=c.id;this.store.save();const t=this.chats.enqueue(c.id,r.prompt,'question',r.execution,false);record.turn_id=t.id;r.last_turn_id=t.id;delete record.error;this.store.save();appendAudit(this.store,{category:'local',action:'routine.enqueued',summary:'Routine queued a local agent task',outcome:'requested',actor:reason==='manual'?'you':'system',repo_id:r.repo_id,request_id:t.id,chat_id:c.id,kind:'question',topic:r.name});return {chat_id:c.id,turn_id:t.id};}
+    catch(e){record.error=e instanceof Error?e.message:String(e);this.store.save();appendAudit(this.store,{category:'local',action:'routine.failed',summary:'Routine could not queue its local task',outcome:'failed',actor:reason==='manual'?'you':'system',repo_id:r.repo_id,topic:r.name,detail:auditReason(e)});throw e;}
   }
   tick(){const now=this.now();for(const r of Object.values(this.store.state.routines||{})){
     if(!r.enabled||r.next_at===null||r.next_at>now)continue;const due=r.next_at;

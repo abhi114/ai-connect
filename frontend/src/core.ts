@@ -14,6 +14,7 @@ import { serverOrigin, checkServer } from './server-switch.ts';
 import { workspaceReview,revealWorkspace } from './workspace-review.ts';
 import { Routines } from './routines.ts';
 import { notificationView } from './notifications.ts';
+import { activityLog,appendAudit,auditOperation,auditRelayEvents } from './audit.ts';
 
 export class Core {
   private ownerContext(value:unknown) {
@@ -47,21 +48,22 @@ export class Core {
         this.remote.call(`/v1/events?after=${this.store.state.cursor}`)
       ]);
       Object.assign(this.store.state,{member:identity.member,network:identity.network,members:members.members,repos:repos.repos,requests:requests.requests});
+      auditRelayEvents(this.store,events.events||[]);
       this.store.state.cursor=events.cursor ?? events.events?.at(-1)?.id ?? this.store.state.cursor;
-      delete this.store.state.connection_error; this.connected=true; this.store.save();
+      delete this.store.state.connection_error;if(!this.connected)appendAudit(this.store,{category:'network',action:'connection.online',summary:'Companion connected to the relay',actor:'system',key:'online:'+Math.floor(Date.now()/60000)});this.connected=true; this.store.save();
       await this.worker.local.refreshLinks();
       if(this.store.state.outbox.some(i=>!i.body.signature&&['/v1/requests','/v1/messages'].includes(i.path))){
         this.store.state.connection_error='Legacy unsigned outgoing messages are held, not resent. Check delivery before submitting a new signed request.';this.store.save();
       }
       if(!this.stopping)await this.worker.tick();
-    } catch(error) { this.connected=false; for(const id of this.worker.active.keys())if(!this.store.state.runs[id]?.local_chat_id)this.worker.stop(id); this.store.state.connection_error=error instanceof Error?error.message:String(error); this.store.save();if(!this.stopping)await this.worker.tick(false); }
+    } catch(error) { if(this.connected)appendAudit(this.store,{category:'network',action:'connection.offline',summary:'Companion lost its relay connection',outcome:'failed',actor:'system',key:'offline:'+Math.floor(Date.now()/60000)});this.connected=false; for(const id of this.worker.active.keys())if(!this.store.state.runs[id]?.local_chat_id)this.worker.stop(id); this.store.state.connection_error=error instanceof Error?error.message:String(error); this.store.save();if(!this.stopping)await this.worker.tick(false); }
     finally { this.syncing=false; }
   }
   async dispatch(method:string,args:any={}) {
-    if(method==='change_server')return this.changeServer(args);
+    if(method==='change_server'){try{const result=await this.changeServer(args);auditOperation(this.store,method,args,result);return result;}catch(error){auditOperation(this.store,method,args,undefined,error);throw error;}}
     if(this.changingServer)throw Error('Server URL is being updated. Try again shortly.');
     this.activeDispatches++;
-    try{return await this.dispatchInner(method,args)}finally{this.activeDispatches--;}
+    try{const result=await this.dispatchInner(method,args);auditOperation(this.store,method,args,result);return result;}catch(error){auditOperation(this.store,method,args,undefined,error);throw error;}finally{this.activeDispatches--;}
   }
   private async changeServer(args:any){
     const server=serverOrigin(args.server);
@@ -86,6 +88,7 @@ export class Core {
   private async dispatchInner(method:string,args:any={}):Promise<any> {
     const state=this.store.state;
     switch(method) {
+      case 'activity_log': return activityLog(state,args);
       case 'notification_status': return notificationView(state,this.connected);
       case 'notification_action': {
         if(args.confirmed!==true||!['approve','reject','cancel','retry','owner_context'].includes(args.action))throw Error('Confirm a supported notification action');

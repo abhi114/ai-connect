@@ -64,5 +64,8 @@ if(process.env.RN_QA_REVIEWS==='1'){
  const {request}=await bob.dispatch('request_change',{repo_id:published.id,body:'Prepare documentation changes in a separate worktree for owner review.'});
  await alice.sync();for(let i=0;i<100&&alice.store.state.runs[request.id]?.state!=='awaiting_review';i++)await new Promise(r=>setTimeout(r,30));
 }
+if(process.env.RN_QA_AUDIT==='1'){
+ await alice.dispatch('diff',{request_id:question.id,path:'../../outside.txt'}).catch(()=>{});
+}
 console.log(JSON.stringify({preview_url:daemon.url,guest_url:guest.url,fixture_directory:dir}));
 for(const signal of ['SIGINT','SIGTERM'] as const)process.once(signal,()=>{clearInterval(timer);bob.worker.stop();carol.worker.stop();void Promise.all([daemon.stop(),guest.stop()]).then(()=>relay.close()).then(()=>process.exit(0));});

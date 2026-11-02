@@ -8,6 +8,7 @@ import { identify,verifyBinding,makeWorktree,git,inspectDiff } from './git.ts';
 import { runLocalCodex,type LocalResponse } from './local-codex.ts';
 import { verification,verifyRequest,signOutgoing } from './trust.ts';
 import { resultPayload } from '../../shared/signing.ts';
+import { auditRun,auditReason } from './audit.ts';
 
 export interface LocalTurn {id:string;body:string;kind:'question'|'change';created_at:number;execution:ExecutionOptions;answer?:string;delegations?:LocalResponse['delegations'];next_steps?:LocalResponse['next_steps']}
 export interface LocalLink {id:string;repo_id:string;kind:'question'|'change';body:string;created_at:number;error?:string;data?:any}
@@ -47,10 +48,10 @@ export class LocalChats {
       t.answer=response.answer;t.delegations=response.delegations;t.next_steps=response.next_steps;run.answer=response.answer;
       const dirty=await git(c.worktree!,'status','--porcelain=v1');
       if(t.kind==='question'&&dirty)throw Error('Read-only turn changed worktree; inspect it');
-      if(dirty){const diff=await inspectDiff(b,c.worktree!,c.head!);run.diff_summary=diff.summary;run.state='awaiting_review';}
+      if(dirty){const diff=await inspectDiff(b,c.worktree!,c.head!);auditRun(this.store,run,'files.validated','Local changes passed scope checks','allowed','Changed files: '+diff.paths.join(', '));run.diff_summary=diff.summary;run.state='awaiting_review';}
       else run.state='complete';this.store.save();
     }catch(e){run.state='interrupted';run.error=e instanceof Error?e.message:String(e);this.store.save();}
-    finally{run.finished_at=Date.now();this.store.save();this.worker.active.delete(t.id);}
+    finally{run.finished_at=Date.now();this.store.save();auditRun(this.store,run,'local.'+run.state,run.state==='awaiting_review'?'Local changes prepared for review':run.state==='complete'?'Local agent task completed':'Local agent task interrupted',run.state==='interrupted'?'failed':'completed',run.error?auditReason(new Error(run.error)):undefined);this.worker.active.delete(t.id);}
   }
   async review(id:string){
     const run=this.store.state.runs[id];if(!run?.local_chat_id||run.state!=='awaiting_review'||this.worker.active.has(id))throw Error('No local change awaiting review');

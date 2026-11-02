@@ -6,6 +6,7 @@ import { Store, socketPath, dataDir } from './store.ts';
 import { Core } from './core.ts';
 import { html, css, js } from './dashboard.ts';
 import { onboardingCss } from './onboarding.ts';
+import { appendAudit } from './audit.ts';
 
 export async function startDaemon(dir?:string,port=Number(process.env.RN_PORT||4319)) {
   dir=dir||dataDir();mkdirSync(dir,{recursive:true,mode:0o700});const lock=join(dir,'daemon.lock');
@@ -20,14 +21,15 @@ export async function startDaemon(dir?:string,port=Number(process.env.RN_PORT||4
   const handler=(socket:boolean)=>async(req:any,res:any)=>{
     const send=(status:number,value:any)=>{res.writeHead(status,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify(value))};
     const origin=`http://127.0.0.1:${webPort}`;
-    if(!socket && req.headers.host!==`127.0.0.1:${webPort}`)return send(403,{error:'Invalid Host'});
-    if(req.headers.origin && req.headers.origin!==origin)return send(403,{error:'Origin rejected'});
-    if(!socket && req.method==='GET' && ['/','/network','/repos','/inbox','/reviews','/settings','/app.js','/style.css'].includes(req.url)) {
+    const denied=(reason:string)=>appendAudit(store,{category:'access',action:'companion.access_blocked',summary:'Local companion access blocked',actor:'unknown',outcome:'blocked',detail:reason,key:'local-denied:'+reason+':'+Math.floor(Date.now()/60000)});
+    if(!socket && req.headers.host!==`127.0.0.1:${webPort}`){denied('HTTP Host validation failed');return send(403,{error:'Invalid Host'});}
+    if(req.headers.origin && req.headers.origin!==origin){denied('HTTP Origin validation failed');return send(403,{error:'Origin rejected'});}
+    if(!socket && req.method==='GET' && ['/','/network','/repos','/inbox','/reviews','/activity','/settings','/app.js','/style.css'].includes(req.url)) {
       res.writeHead(200,{'Content-Type':req.url==='/app.js'?'text/javascript':req.url==='/style.css'?'text/css':'text/html','Cache-Control':'no-store','Referrer-Policy':'no-referrer','X-Content-Type-Options':'nosniff','Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'"});
       return res.end(req.url==='/app.js'?js:req.url==='/style.css'?css+onboardingCss:html);
     }
     const supplied=Buffer.from(req.headers.authorization||'');const expected=Buffer.from(`Bearer ${store.state.session_token}`);
-    if(supplied.length!==expected.length || !timingSafeEqual(supplied,expected))return send(401,{error:'Open the dashboard URL printed by rn dashboard'});
+    if(supplied.length!==expected.length || !timingSafeEqual(supplied,expected)){if(req.url==='/rpc')denied('Local API session authentication failed');return send(401,{error:'Open the dashboard URL printed by rn dashboard'});}
     if(!ready)return send(503,{error:'Companion is still starting'});
     if(req.method!=='POST'||req.url!=='/rpc')return send(404,{error:'Not found'});
     if(!String(req.headers['content-type']).startsWith('application/json'))return send(415,{error:'JSON required'});
@@ -48,8 +50,9 @@ export async function startDaemon(dir?:string,port=Number(process.env.RN_PORT||4
   const url=`http://127.0.0.1:${webPort}/#token=${store.state.session_token}`;
   writeFileSync(join(store.dir,'dashboard.json'),JSON.stringify({url,pid:process.pid}),{mode:0o600});
   ready=true;
+  appendAudit(store,{category:'network',action:'companion.started',summary:'Local companion started',actor:'system',outcome:'completed'});
   const interval=setInterval(()=>void core.sync(),3000);void core.sync();
   let stopping:Promise<void>|undefined;
-  function stop(){return stopping||= (async()=>{core.stopping=true;clearInterval(interval);core.worker.stop();await Promise.all([new Promise<void>(r=>ipc.close(()=>r())),new Promise<void>(r=>web.close(()=>r()))]);while(core.syncing||core.worker.active.size)await new Promise(r=>setTimeout(r,50));if(existsSync(lock))unlinkSync(lock);})();}
+  function stop(){return stopping||= (async()=>{appendAudit(store,{category:'network',action:'companion.stopping',summary:'Local companion stopping',actor:'system',outcome:'info'});core.stopping=true;clearInterval(interval);core.worker.stop();await Promise.all([new Promise<void>(r=>ipc.close(()=>r())),new Promise<void>(r=>web.close(()=>r()))]);while(core.syncing||core.worker.active.size)await new Promise(r=>setTimeout(r,50));if(existsSync(lock))unlinkSync(lock);})();}
   return {core,url,port:webPort,stop};
 }
