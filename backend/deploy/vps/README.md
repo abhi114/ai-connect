@@ -75,4 +75,14 @@ Restore requires stopping the relay, preserving the current database **and WAL/S
 
 ## Verification performed
 
+### 3 November 2026 update — automatic changes and Reviews
+
+Application commit `0ab55f4` is deployed at `/opt/aiconnect/releases/20261103-auto-change-reviews`; `/opt/aiconnect/current` points to it. The release was created from a Git archive of backend source/package metadata, shared code, and VPS deployment/backup scripts. The old release remains available for rollback. A consistent backup completed before switching, and the backup service succeeded again after switching. No database files were replaced or schema migrations run.
+
+The relay now supports the optional per-repository `changes_require_approval` policy, defaulting to true for existing repositories. Only the owner can update it. Moving to automatic execution leaves existing pending approvals untouched; tightening the policy holds queued unapproved work and cancels unapproved active execution. The updated companion also requires its matching local automatic policy. Every automatic change still requires owner review before commit/delivery.
+
+Verification: public HTTPS and loopback readiness passed, backend/Caddy active, SQLite quick_check `ok`, membership/history authentication preserved. Counts remained 2 networks, 4 members, 4 devices, 2 repos, 12 requests and 11 results. Deployed server.ts SHA-256 matches the release source: `47ecc91850702622ed2bdba9a77f08835429109f47eac947cb31f5d9d75f070c`. Validation before release: frontend 104 tests passed with one live-Codex test skipped; backend 19 tests passed; both TypeScript checks passed.
+
+Mac installers were rebuilt from this application commit under `frontend/dist/macos-arm64-1793648823587/` and `frontend/dist/macos-x64-1793648823587/`. Both DMGs and app signatures verified; the Apple Silicon app passed isolated first-run startup checks. These remain local, Git-ignored, ad-hoc development builds, not notarized distributions. Update the installed Mac app and restart the Windows companion after pulling; do not reset profiles or rejoin the team. Native and real-model two-device testing remains manual.
+
 All 17 backend tests passed locally. Public HTTPS readiness returned HTTP 200 with `{"ok":true}` without bypassing TLS validation. HTTP redirects to HTTPS. Unauthenticated `/v1/me` returns 401. Existing membership/key/history checks passed. Both services are enabled at boot and active; a backend process restart preserved service/database access. The VPS itself was not rebooted. Live Mac-to-Windows execution after client URL cutover remains to be tested by the user.
